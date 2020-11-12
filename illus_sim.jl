@@ -1,13 +1,14 @@
-cd("/Users/julianashwin/Documents/DPhil/nnet_learning_julia")
+cd("/Users/julianashwin/Documents/GitHub/EcoNNet.jl")
 
 """
 Add extra cores if you want to parallelise later
 """
 using Distributed
-addprocs(4)
+addprocs(2)
+#rmprocs(2)
 workers()
 
-@everywhere include("EcoNNet/src/EcoNNet.jl")
+@everywhere include("src/EcoNNet_dev.jl")
 
 
 """
@@ -216,7 +217,7 @@ options.plot_vars = [:π, :y, :Eπ, :Ey]
 
 # Simulate the learning for a set number of periods
 gr() # Set GR backend for plots as it's the fastest
-s[300000:400000,:]= s[400000:options.N,:]
+#s[300000:400000,:]= s[400000:options.N,:]
 @time beliefs,s = simulate_learning(100000:options.N, s, beliefs, indices, options)
 
 # Plot simulated time series
@@ -243,10 +244,10 @@ starts = [(π=3.0,y=3.0,periods=100,arrows=[10,80]),
 	(π=-3.,y=-3.,periods=100,arrows=[10,80]),
 	(π=-0.1,y=-0.1,periods=110,arrows=[30,40,100]),
 	(π=-0.05,y=-0.08,periods=140,arrows=[45,55,135]),
-	#(π=1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=-1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=-1.0,periods=100,arrows=[9])
+	(π=1.0,y=1.0,periods=100,arrows=[9]),
+	(π=-1.0,y=1.0,periods=100,arrows=[9]),
+	(π=1.0,y=-1.0,periods=100,arrows=[9]),
+	(π=-1.0,y=-1.0,periods=100,arrows=[9])
 	]
 for start in starts
 	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
@@ -374,277 +375,5 @@ Rsq_y = 1 - var(heatmap_df.y-heatmap_df.Ey)/var(heatmap_df.y)
 
 
 """
-Use Network in grid solution method
+End of script
 """
-p_y = (1 + par.ρ_y)/2
-q_y = p_y
-N = 101
-ψ_y = sqrt(par.σ_y^2/(1 - par.ρ_y^2))*sqrt(N-1)
-ϵ_y_range, ϵ_y_kernel = Rouwenhorst(p_y,q_y,ψ_y,N)
-gr()
-heatmap(ϵ_y_range,
-    ϵ_y_range, ϵ_y_kernel,
-    c=cgrad([:white, :blue]),
-    xlabel="shock(t+1)", ylabel="shock(t)",
-    title="My title")
-
-
-display(join(["Order in grid should be ",indices.statenames_all]))
-#p_range = -5.0:0.25:5.0
-y_range = -3.5:0.1:3.5
-#ϵ_y_range = Array{Float64}(-2.5:0.25:2.5)  # par.σ_y* randn(10)
-#ϵ_y_density = round.(pdf.(Normal(0.0, par.σ_y),ϵ_y_range), digits = 12)
-#ϵ_y_density = len(ϵ_y_density).*ϵ_y_density./sum(ϵ_y_density)
-
-# Create state_grid
-state_grid = (vec(collect(Iterators.product(y_range, ϵ_y_range))))
-state_grid = [(collect(x)) for x in state_grid]
-state_grid = permutedims(reshape(hcat(state_grid...), (length(state_grid[1]), length(state_grid))))
-#@eval @everywhere state_grid=$state_grid
-
-println(join(["Order in shock range should be:",(indices.statenames_current)]," "))
-shock_range = (vec(collect(Iterators.product(ϵ_y_range))))
-shock_range = [(collect(x)) for x in shock_range]
-shock_range = permutedims(reshape(hcat(shock_range...), (length(shock_range[1]), length(shock_range))))
-
-ϵ_y_transition = DataFrame(ϵ_y = repeat(ϵ_y_range, inner = length(ϵ_y_range)),
-	ϵ_y_lead = repeat(ϵ_y_range, outer = length(ϵ_y_range)))
-ϵ_y_transition.prob = vec(transpose(ϵ_y_kernel))
-
-# Create a tuple with the transition probabilities (if only one shock remember to include comma)
-transition_probabilities = (ϵ_y = ϵ_y_transition,)
-
-
-
-# Create_df_grid makes DataFrame with states and expectations for each grid point
-@time df_grid = create_df_grid(state_grid, beliefs, indices)
-# step_1_map fills in endogenous variables for period t
-df_grid = step_1_map(df_grid, beliefs, indices, options, sval = 0.0)
-# Create the transition probability for each point
-@time df_grid_new, loss_weights, probs_df =
-	create_trans_probs(df_grid, transition_probabilities, indices,
-		shock_range, parallel = true)
-
-# step_2_prep fills in predictions, shocks and their probability for t+1
-@time grid_map, fill_cols = step_2_prep(df_grid_new, beliefs, indices, options, sval = 0.0)
-# in_grid_map will be used to solve for t+1 realisations in parallel, so needs to be available to each worker
-in_grid_map  = SharedArray{Float64}(grid_map)
-# out_grid_map will contain the t+1 realisations for each state and t+1 shock
-out_grid_map  = SharedArray{Float64}(size(grid_map,1), len(indices.endognames))
-# Solve forward using distributed for (first time will compile so be a lot slower so maybe pre-run on subset)
-@time begin
-	@sync @distributed for ii in 1:size(in_grid_map,1)
-		out_grid_map[ii,:] = step_fast!(in_grid_map[ii,:],options)
-	end
-end
-
-# df_grid_new can now be used to train the network
-df_grid_new[:,fill_cols] = out_grid_map
-
-beliefs = update_beliefs(df_grid_new, beliefs, indices, options,
-	epochs = 2, cycles = 100, verbose = true, weights = loss_weights)
-
-"""
-Iteratively update beliefs based on the state-space grid
-"""
-gr()
-for it in 1:10
-    display(println("Running through iteration ", it))
-	global df_grid = create_df_grid(state_grid, beliefs, indices)
-	df_grid = step_1_map(df_grid, beliefs, indices, options, sval = 0.0)
-	@time df_grid_new, loss_weights, probs_df = create_trans_probs(df_grid, transition_probabilities,
-		indices, shock_range, parallel = true)
-	# step_2_prep fills in predictions, shocks and their probability for t+1
-	@time grid_map, fill_cols = step_2_prep(df_grid_new, beliefs, indices, options, sval = 0.0)
-	# Grid_map will be used to solve for t+1 realisations in parallel, so needs to be available to each worker
-	# in_grid_map will be used to solve for t+1 realisations in parallel, so needs to be available to each worker
-	global in_grid_map  = SharedArray{Float64,2}(grid_map)
-	# out_grid_map will contain the t+1 realisations for each state and t+1 shock
-	global out_grid_map = SharedArray{Float64,2}(size(grid_map,1), len(indices.endognames))
-
-	@time begin
-		@sync @distributed for ii in 1:size(in_grid_map,1)
-			out_grid_map[ii,:] = step_fast!(in_grid_map[ii,:],options)
-		end
-	end
-	# df_grid_new can now be used to train the network
-	df_grid_new[:,fill_cols] = out_grid_map
-	@time global beliefs = update_beliefs(df_grid_new, beliefs, indices, options,
-		epochs = 1, cycles = 200, verbose = true, weights = loss_weights)
-
-	starting_point = deepcopy(upper)
-	starting_point[:ϵ_y] = 0.0
-	paths, plt1 = irf(:ϵ_y, starting_point, beliefs, shock_period = 10, periods = 100,
-	    magnitude = 0.0, persistence = par.ρ_y, show_plot = false,
-	    plot_vars = (:p, :y, :Ep_lead), y_lim = [-3.5,3.5])
-	starting_point = deepcopy(lower)
-	starting_point[:ϵ_y] = 0.0
-	paths, plt2 = irf(:ϵ_y, starting_point, beliefs, shock_period = 10, periods = 100,
-	    magnitude = 0.0, persistence = par.ρ_y, show_plot = true,
-	    plot_vars = (:p, :y, :Ep_lead), y_lim = [-3.5,3.5])
-	display(plot(plt1, plt2, layout = (2,1), title = join(["Iteration: ", it])))
-end
-
-
-
-display(join(["Order in grid should be ",indices.statenames_all]))
-y_range = Array(y_range)
-
-
-ranges = (y_lag = y_range, ϵ_y_range = ϵ_y_range)
-state_t_vars = [:y_lag, :ϵ_y]
-state_tp1_vars = [:y, :ϵ_y_lead]
-
-
-for it in 1:30
-    display(println("Running through iteration ", it))
-	global df_grid = create_df_grid(state_grid, beliefs, indices)
-	df_grid.state_t = 1:nrow(df_grid)
-	df_grid.state_tp1 = Int.(zeros(nrow(df_grid)))
-	df_grid.uncon_prob = zeros(nrow(df_grid))
-	@time df_grid = step_1_map(df_grid, beliefs, indices, options, sval = 0.0)
-
-	# Make sure that the step1 variables correspond to grid points
-	df_grid.y = map(x -> findnearest(ranges.y_lag,x), Array(df_grid.y))
-
-	# Find step 2 points and transition probabilities
-	@time global df_grid_new, loss_weights, probs_df = create_trans_probs(df_grid, transition_probabilities,
-		indices, shock_range, parallel = true)
-	# step_2_prep fills in predictions, shocks and their probability for t+1
-	@time grid_map, fill_cols = step_2_prep(df_grid_new, beliefs, indices, options, sval = 0.0)
-	# Grid_map will be used to solve for t+1 realisations in parallel, so needs to be available to each worker
-	# in_grid_map will be used to solve for t+1 realisations in parallel, so needs to be available to each worker
-	global in_grid_map  = SharedArray{Float64,2}(grid_map)
-	# out_grid_map will contain the t+1 realisations for each state and t+1 shock
-	global out_grid_map = SharedArray{Float64,2}(size(grid_map,1), len(indices.endognames))
-
-	@time begin
-		@sync @distributed for ii in 1:size(in_grid_map,1)
-			out_grid_map[ii,:] = step_fast!(in_grid_map[ii,:],options)
-		end
-	end
-	# df_grid_new can now be used to train the network
-	df_grid_new[:,fill_cols] = out_grid_map
-
-	# Make sure that the step 2 variables correspond to grid points
-	df_grid_new.y_lead = map(x -> findnearest(ranges.y_lag,x), Array(df_grid_new.y_lead))
-
-	# Classify state for t+1
-	poss_states = nrow(df_grid)
-	prog = Progress(poss_states, dt = 1, desc="Classifying t+1 state: ")
-	for st in 1:poss_states
-		#state_defs = unique(df_grid_new[:,state_t_vars])
-		state_def = df_grid[st,state_t_vars]
-		sel_rows = BitArray(((df_grid_new.y .== state_def.y_lag).*
-			(df_grid_new.ϵ_y_lead .== state_def.ϵ_y)))
-		df_grid_new[sel_rows,:state_tp1] .= st
-		next!(prog)
-	end
-
-	# Generate transition probability matrix for whole system
-	@time global CP = create_kernel(df_grid_new, poss_states)
-	#display(heatmap(CP))
-	display("Finding eigenvectors")
-	CP ./= sum(CP,dims = 2)
-
-	global A_I = (transpose(CP)-I(size(CP,1)))
-	#@elapsed MP_null = nullspace(A_I,atol=1e-15,rtol=1e-15)
-	mc = MarkovChain(CP)
-	@time MP = stationary_distributions(mc)[1]
-	plot(1:length(MP),MP)
-
-	MP = MP./sum(MP)
-	#plot(1:len(MP),MP)
-
-	# Use Bayes Rule to find unconditional probabilities
-	MP_mat = repeat(MP, outer = [1, len(MP)])
-	UP = MP_mat.*CP
-	UP ./= sum(UP)
-
-	# These unconditional probabilities need to be
-	for st in 1:nrow(df_grid_new)
-		df_grid_new[st,:uncon_prob] = UP[df_grid_new.state_t[st],df_grid_new.state_tp1[st]]
-	end
-
-	display(plot(df_grid_new.y, df_grid_new.uncon_prob))
-	df_train = df_grid_new[(df_grid_new.uncon_prob .> 1e-16),:]
-
-	loss_weights = Matrix(transpose(df_train.uncon_prob))
-	loss_weights ./=(sum(loss_weights)/size(loss_weights,2))
-	loss_weights = repeat(loss_weights, len(indices.expectnames_all))
-
-	@time global beliefs = update_beliefs(df_train, beliefs, indices, options,
-		epochs = 4, cycles = 500, verbose = true, weights = loss_weights)
-	if true
-		starting_point = deepcopy(upper)
-		starting_point[:ϵ_y] = 0.0
-		paths, plt1 = irf(:ϵ_y, starting_point, beliefs, shock_period = 10, periods = 100,
-	    	magnitude = 0.0, persistence = par.ρ_y, show_plot = false,
-	    	plot_vars = (:p, :y, :Ep_lead), y_lim = [-3.0,3.0])
-		starting_point = deepcopy(lower)
-		starting_point[:ϵ_y] = 0.0
-		paths, plt2 = irf(:ϵ_y, starting_point, beliefs, shock_period = 10, periods = 100,
-	    	magnitude = 0.0, persistence = par.ρ_y, show_plot = false,
-	    	plot_vars = (:p, :y, :Ep_lead), y_lim = [-3.0,3.0])
-		display(plot(plt1, plt2, layout = (2,1), title = join(["Iteration: ", it])))
-	end
-end
-save("networks/meandyn_2eq_24nodes.jld2", "beliefs", beliefs)
-beliefs = load("networks/meandyn_2eq_both_24nodes.jld2", "beliefs");
-
-plot(df_grid_new.y, df_grid_new.uncon_prob, ylabel = "Probability", xlabel = "y")
-savefig("figures/uncondist_2eq.png")
-starting_point = deepcopy(upper)
-starting_point[:ϵ_y] = 0.0
-paths1, plt1 = irf(:ϵ_y, starting_point, beliefs, shock_period = 10, periods = 100,
-	magnitude = 0.0, persistence = par.ρ_y, show_plot = false,
-	plot_vars = (:p, :y, :Ep_lead), y_lim = [-3.0,3.0])
-starting_point = deepcopy(lower)
-starting_point[:ϵ_y] = 0.0
-paths2, plt2 = irf(:ϵ_y, starting_point, beliefs, shock_period = 10, periods = 100,
-	magnitude = 0.0, persistence = par.ρ_y, show_plot = false,
-	plot_vars = (:p, :y, :Ep_lead), y_lim = [-3.0,3.0])
-display(plot(plt1, plt2, layout = (2,1)))
-savefig("figures/irf_2eq.png")
-
-starting_point = deepcopy(upper)
-starting_point[:y] = 3.5
-paths1, plt1 = irf(:ϵ_y, starting_point, beliefs, shock_period = 10, periods = 100,
-	magnitude = 0.0, persistence = par.ρ_y, show_plot = false,
-	plot_vars = (:p, :y, :Ep_lead), y_lim = [-3.0,3.0])
-starting_point = deepcopy(lower)
-starting_point[:y] = -3.5
-paths2, plt2 = irf(:ϵ_y, starting_point, beliefs, shock_period = 10, periods = 100,
-	magnitude = 0.0, persistence = par.ρ_y, show_plot = false,
-	plot_vars = (:p, :y, :Ep_lead), y_lim = [-3.0,3.0])
-starting_point = deepcopy(central)
-starting_point[:y] = 0.1
-paths3, plt1 = irf(:ϵ_y, starting_point, beliefs, shock_period = 10, periods = 100,
-	magnitude = 0.0, persistence = par.ρ_y, show_plot = false,
-	plot_vars = (:p, :y, :Ep_lead), y_lim = [-3.0,3.0])
-starting_point = deepcopy(central)
-starting_point[:y] = -0.1
-paths4, plt2 = irf(:ϵ_y, starting_point, beliefs, shock_period = 10, periods = 100,
-	magnitude = 0.0, persistence = par.ρ_y, show_plot = false,
-	plot_vars = (:p, :y, :Ep_lead), y_lim = [-3.0,3.0])
-
-
-
-
-phase_plot = plot(xlabel = "y",
-    xlims = (-4.0,4.0),
-    ylabel = "p",
-    ylims = (-9.0, 9.0))
-output = -4.0:0.01:4.0;
-plot!(output,Δp_condition.(output), label = "p condition", color = "black")
-plot!(output,Δy_condition.(output), label = "y condition", color = "black")
-
-phase_arrow_plot(paths1, [:y,:p], arrow_points=[20,60], h_points = 11:99,
-	v_points = 12:100)
-phase_arrow_plot(paths2, vars, arrow_points=[2,20], h_points = 11:99,
-	v_points = 12:100)
-phase_arrow_plot(paths3, vars, arrow_points=[10], h_points = 11:99,
-	v_points = 12:100)
-phase_arrow_plot(paths4, vars, arrow_points=[20], h_points = 11:99,
-	v_points = 12:100)
-savefig("figures/phase_2eq_both.png")
