@@ -86,7 +86,7 @@ It supports either neural network or RLS learning
 It takes previous beliefs as an input, and returns updated beliefs,
 """
 function learn!(beliefs::Chain, s::DataFrame, tt::Int64, options::EcoNNetOptions,
-	indices::EcoNNetIndices, loss; n_cycles::Int64 = 10 )
+	indices::EcoNNetIndices, loss; n_cycles::Int64 = 10, cutoff::Bool = true)
 
 	#println("Training network at simulation ", tt)
 	# Inputs are lagged or current values of info set
@@ -151,7 +151,9 @@ function learn!(beliefs::Chain, s::DataFrame, tt::Int64, options::EcoNNetOptions
 		next!(prog)
 
 		if val_loss[ii] == 0.0 || early_stop >= 1
-    		break
+			if cutoff
+    			break
+			end
 		end
 	end
 	display(join(["Loss: ", current_loss]))

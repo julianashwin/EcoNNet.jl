@@ -92,7 +92,7 @@ function create_kernel(df::DataFrame, poss_states::Int64)
 	# Populate the CP matrix with the transition probabilities
 	prog = Progress(size(trans_probs,1), dt = 1, desc="Populating CP matrix: ")
 	for st in 1:size(trans_probs,1)
-		CP[trans_probs[st,1],trans_probs[st,2]] = trans_probs[st,3]
+		CP[trans_probs[st,1],trans_probs[st,2]] += trans_probs[st,3]
 		next!(prog)
 	end
 
