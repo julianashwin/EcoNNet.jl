@@ -250,10 +250,15 @@ display(plot!(paths2.y, subplot =2))
 """
 Use Network in grid solution method
 """
+@everywhere par = (β = 0.95, κ = 0.1,
+	η = 0.5, σ = 0.25, ϕ_π = 1.5, ϕ_y = 0.5,
+	ρ_π = 0.5, σ_π = 0.001, ρ_y = 0.5, σ_y = 0.01,
+	R_lim = -0.02, π_lim = -0.03, y_lim = -0.05);
+
 
 p_y = (1 + par.ρ_y)/2
 q_y = p_y
-N = 101
+N = 21
 ψ_y = sqrt(par.σ_y^2/(1 - par.ρ_y^2))*sqrt(N-1)
 ϵ_y_range, ϵ_y_kernel = Rouwenhorst(p_y,q_y,ψ_y,N)
 gr()
@@ -265,8 +270,8 @@ heatmap(ϵ_y_range,
 
 
 display(join(["Order in grid should be ",indices.statenames_all]))
-π_range = Array(-0.04:0.0005:0.04)
-y_range = Array(-0.08:0.0005:0.04)
+π_range = Array(-0.04:0.001:0.04)
+y_range = Array(-0.08:0.001:0.04)
 #ϵ_y_range = Array{Float64}(-2.5:0.25:2.5)  # par.σ_y* randn(10)
 #ϵ_y_density = round.(pdf.(Normal(0.0, par.σ_y),ϵ_y_range), digits = 12)
 #ϵ_y_density = len(ϵ_y_density).*ϵ_y_density./sum(ϵ_y_density)
