@@ -76,6 +76,28 @@ end
 
 
 
+"""
+Function that computes expectations from transition probabilities
+"""
+function compute_expectations(df_grid, df_grid_new, shock_range)
+		start_obs = 1
+		end_obs = len(shock_range)
+		prog = Progress(nrow(df_grid), dt = 1, desc="Computing Expectations: ")
+		for st in 1:nrow(df_grid)
+			df_rows = df_grid_new[start_obs:end_obs,:]
+			df_rows.trans_prob ./= sum(df_rows.trans_prob)
+			df_grid[st,:π_lead] = sum(df_rows.trans_prob.*df_rows.π_lead)
+			df_grid[st,:y_lead] = sum(df_rows.trans_prob.*df_rows.y_lead)
+			start_obs +=len(shock_range)
+			end_obs +=len(shock_range)
+			next!(prog)
+		end
+		return df_grid
+end
+
+
+
+
 
 """
 Function that updates the beliefs based on df_grid_new and weighted loss function
