@@ -1,29 +1,60 @@
 """
-Function to classify state at t+1 in df_grid_new
+Function to get state t+1 variables from state t variables
 """
-function classify_states(df_grid, df_grid_new,range_dicts,state_tp1_vars)
-	range_lengths = []
-	for vv in 1:len(range_dicts)
-		push!(range_lengths,len(range_dicts[vv]))
+function state_tp1(state_t_vars)
+	state_tp1_vars = String.(state_t_vars)
+	for vv in 1:len(state_t_vars)
+		st_str = string(state_t_vars[vv])
+		if occursin("_lag", st_str)
+			st_str = replace(st_str, "_lag" => "")
+		else
+			st_str*="_lead"
+		end
+		state_tp1_vars[vv] = st_str
 	end
+	return Symbol.(state_tp1_vars)
+end
+
+
+"""
+Function that maps endogenous variables to their closest grid point, given by ranges
+"""
+function closest_gridpoint(df_grid::DataFrame, endog::Array{Symbol,1}, ranges::NamedTuple)::DataFrame
+	for vv in 1:len(endog)
+		df_grid[:,endog[vv]] = map(x -> findnearest(ranges[endog[vv]],x), Array(df_grid[:,endog[vv]]))
+	end
+	return df_grid
+end
+
+
+"""
+Function that classifies the state at t+1 for each grid point
+	The values of the endogenous variables are automatically filled, to avoid
+	using the equilbrium conditions to calculate them
+"""
+function classify_states(df_grid_new::DataFrame, range_dicts::NamedTuple, range_lengths::NamedTuple,
+		options::EcoNNetOptions)::DataFrame
+	state_t_vars::Array{Symbol,1} = options.states
+	state_tp1_vars::Array{Symbol,1}  = state_tp1(state_t_vars)
+	class_vars::Array{Symbol,1}  = Symbol.(replace.(string.(state_tp1_vars), "_lead" => ""))
+	nvars::Int64 = len(class_vars)
+	defs::Array{Int64,1} = Int.(zeros(len(class_vars)))
+
+	# Check every row of the dataframe
 	prog = Progress(nrow(df_grid_new), dt = 1, desc="Classifying t+1 state: ")
 	for df_row in 1:nrow(df_grid_new)
-		#state_defs = unique(df_grid_new[:,state_t_vars])
-		state_def = df_grid_new[df_row,state_tp1_vars]
 
 		# Find the index of each variable
-		π_def = π_dict[state_def.π]
-		y_def = y_dict[state_def.y]
-		ϵ_y_def = ϵ_y_dict[state_def.ϵ_y_lead]
-
-		st = 0
-
-		st += (ϵ_y_def-1)*len(π_range)*len(y_range)
-		st += (y_def-1)*len(π_range)
-		st += π_def
-
-		@assert state_labels[st] == Array(state_def)
-
+		state_def = df_grid_new[df_row,state_tp1_vars]
+		for vv in 1:nvars
+			defs[vv] = range_dicts[class_vars[vv]][state_def[state_tp1_vars[vv]]]
+		end
+		# Combine these individual indices to indentify the state
+		st = defs[1]
+		for vv in 2:nvars
+			st += (defs[vv] - 1)*prod([range_lengths[pp] for pp in class_vars[1:(vv-1)]])
+		end
+		#@assert state_labels[st] == Array(state_def)
 		# Label state at t+1
 		df_grid_new[df_row,:state_tp1]=st
 		# Use this to evaluate endogenous variables
@@ -33,9 +64,7 @@ function classify_states(df_grid, df_grid_new,range_dicts,state_tp1_vars)
 		end
 		next!(prog)
 	end
-
 	return df_grid_new
-
 end
 
 
@@ -81,15 +110,15 @@ Function that computes expectations from transition probabilities
 """
 function compute_expectations(df_grid, df_grid_new, shock_range)
 		start_obs = 1
-		end_obs = len(shock_range)
+		end_obs = size(shock_range,1)
 		prog = Progress(nrow(df_grid), dt = 1, desc="Computing Expectations: ")
 		for st in 1:nrow(df_grid)
 			df_rows = df_grid_new[start_obs:end_obs,:]
 			df_rows.trans_prob ./= sum(df_rows.trans_prob)
 			df_grid[st,:π_lead] = sum(df_rows.trans_prob.*df_rows.π_lead)
 			df_grid[st,:y_lead] = sum(df_rows.trans_prob.*df_rows.y_lead)
-			start_obs +=len(shock_range)
-			end_obs +=len(shock_range)
+			start_obs += size(shock_range,1)
+			end_obs += size(shock_range,1)
 			next!(prog)
 		end
 		return df_grid
@@ -103,7 +132,8 @@ end
 Function that updates the beliefs based on df_grid_new and weighted loss function
 """
 function update_beliefs(df::DataFrame, beliefs::Chain, indices::EcoNNetIndices, options::EcoNNetOptions;
-	epochs::Int64 = 1, cycles::Int64 = 10, verbose::Bool = true, weights::Array{Float64,2} = ones(2,2))
+	epochs::Int64 = 1, cycles::Int64 = 10, verbose::Bool = true, weights::Array{Float64,2} = ones(2,2),
+	cutoff::Bool = true)
 
 	# Extract inputs and outputs
     outputnames_new = Symbol.(replace.(String.(indices.expectnames_all), "E"=> ""))
@@ -136,7 +166,9 @@ function update_beliefs(df::DataFrame, beliefs::Chain, indices::EcoNNetIndices, 
 		end
 		if ii > 1
 			if (loss_iters[ii] > loss_iters[ii-1])
-				break
+				if cutoff
+					break
+				end
 			end
 		end
 	end

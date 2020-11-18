@@ -12,21 +12,21 @@ Expectations are denoted by a capital E prefix,
 leads and lags are specified as a `_lead` or `_lag` suffix
 """
 
-@everywhere options = EcoNNetOptions(infoset = [:y_lag, :ϵ_y],
+@everywhere options = EcoNNetOptions(infoset = [:y_lag, :ϵ_π, :ϵ_y],
     expectations = [:Eπ,:Ey,:Eπ_lead, :Ey_lead],
     endogenous = [:π, :y],
-    exogenous = [:ϵ_y],
-    states = [:y_lag, :ϵ_y],
+    exogenous = [:ϵ_π, :ϵ_y],
+    states = [:y_lag, :ϵ_π, :ϵ_y],
 	auxiliary = [:r],
-    N = 500000, num_nodes = 24, activation = σ, window = 40000)
+    N = 500000, num_nodes = 24, activation = relu, window = 40000)
 
 """
 Define the parameters as a Named Tuple.
 """
 
 @everywhere par = (β = 0.95, κ = 0.1,
-	η = 1.0, σ = 0.25, ϕ_π = 1.5, ϕ_y = 1.0,
-	ρ_π = 0.5, σ_π = 0.3, ρ_y = 0.75, σ_y = 0.2,
+	η = 0.95, σ = 0.25, ϕ_π = 1.5, ϕ_y = 1.0,
+	ρ_π = 0.5, σ_π = 0.001, ρ_y = 0.75, σ_y = 0.05,
 	R_lim = -2.0, π_lim = -3.0, y_lim = -5.0);
 
 """
@@ -39,8 +39,8 @@ State the equilibrium conditions of the model as a function which returns
     # Manually unpack the states
     #π_lag::Float64 = states_input[1]
     y_lag::Float64 = states_input[1]
-    #ϵ_π::Float64 = states_input[3]
-	ϵ_y::Float64 = states_input[2]
+    ϵ_π::Float64 = states_input[2]
+	ϵ_y::Float64 = states_input[3]
     # and the predictions
     #Ep::Float64 = predictions_input[1]
     #Ey::Float64 = predictions_input[2]
@@ -102,7 +102,7 @@ Lagged values which appear as state variables need not be included.
 @everywhere variables = Symbol.(cat(Vector(options.exogenous),
     Vector(options.endogenous),outputnames(options),
     Vector(options.expectations),Vector(options.auxiliary), dims = 1));
-s = DataFrame(ones(options.N, length(variables)), variables);
+s = DataFrame(ones(options.N, len(variables)), variables);
 @everywhere indices = extract_indices(options, variables);
 
 
@@ -224,7 +224,7 @@ else
 end
 states1 = extract_states(s,t,indices);
 starting_values1 = Vector(s[t,indices.endogindex]);
-F1 = zeros(length(options.endogenous))
+F1 = zeros(len(options.endogenous))
 display(step_fast!(cat(starting_values1, states1, predictions1, dims = 1),options))
 display(equilibrium_conditions_fast(F1,starting_values1, states1, predictions1))
 
@@ -259,14 +259,27 @@ display(plot!(paths2.y, subplot =2))
 Use Network in grid solution method
 """
 ## Rouwenhorst approximation of shock
+# ϵ_y
 p_y = (1 + par.ρ_y)/2
 q_y = p_y
-N = 21
+N = 41
 ψ_y = sqrt(par.σ_y^2/(1 - par.ρ_y^2))*sqrt(N-1)
 ϵ_y_range, ϵ_y_kernel = Rouwenhorst(p_y,q_y,ψ_y,N)
 gr()
 heatmap(ϵ_y_range,
     ϵ_y_range, ϵ_y_kernel,
+    c=cgrad([:blue, :white,:red, :yellow]),
+    xlabel="shock(t+1)", ylabel="shock(t)",
+    title="My title")
+# ϵ_π
+p_π = (1 + par.ρ_π)/2
+q_π = p_π
+N = 3
+ψ_π = sqrt(par.σ_π^2/(1 - par.ρ_π^2))*sqrt(N-1)
+ϵ_π_range, ϵ_π_kernel = Rouwenhorst(p_π,q_π,ψ_π,N)
+gr()
+heatmap(ϵ_π_range,
+    ϵ_π_range, ϵ_π_kernel,
     c=cgrad([:blue, :white,:red, :yellow]),
     xlabel="shock(t+1)", ylabel="shock(t)",
     title="My title")
@@ -279,101 +292,72 @@ y_range = Array(-8.0:0.01:6.0)
 #ϵ_y_density = round.(pdf.(Normal(0.0, par.σ_y),ϵ_y_range), digits = 12)
 #ϵ_y_density = len(ϵ_y_density).*ϵ_y_density./sum(ϵ_y_density)
 
+π_dict = Dict(π_range[i] => i for i = 1:len(π_range))
+y_dict = Dict(y_range[i] => i for i = 1:len(y_range))
+ϵ_π_dict = Dict(ϵ_π_range[i] => i for i = 1:len(ϵ_π_range))
+ϵ_y_dict = Dict(ϵ_y_range[i] => i for i = 1:len(ϵ_y_range))
+
+range_dicts = (π = π_dict, y=y_dict, ϵ_π=ϵ_π_dict, ϵ_y=ϵ_y_dict)
+ranges = (π = π_range, y = y_range, ϵ_π = ϵ_π_range, ϵ_y = ϵ_y_range)
+range_lengths = (π = len(π_range), y = len(y_range), ϵ_π = len(ϵ_π_range), ϵ_y = len(ϵ_y_range))
+
+
 # Create state_grid
-state_labels = (vec(collect(Iterators.product(y_range, ϵ_y_range))))
+state_labels = (vec(collect(Iterators.product(ranges.y, ranges.ϵ_π, ranges.ϵ_y))))
 state_labels = [(collect(x)) for x in state_labels]
-state_grid = permutedims(reshape(hcat(state_labels...), (length(state_labels[1]), length(state_labels))))
+state_grid = permutedims(reshape(hcat(state_labels...), (len(state_labels[1]), len(state_labels))))
 #@eval @everywhere state_grid=$state_grid
 
 println(join(["Order in shock range should be:",(indices.statenames_current)]," "))
-shock_range = (vec(collect(Iterators.product(ϵ_y_range))))
+shock_range = (vec(collect(Iterators.product(ranges.ϵ_π,ranges.ϵ_y))))
 shock_range = [(collect(x)) for x in shock_range]
-shock_range = permutedims(reshape(hcat(shock_range...), (length(shock_range[1]), length(shock_range))))
+shock_range = permutedims(reshape(hcat(shock_range...), (len(shock_range[1]), len(shock_range))))
 
-ϵ_y_transition = DataFrame(ϵ_y = repeat(ϵ_y_range, inner = length(ϵ_y_range)),
-	ϵ_y_lead = repeat(ϵ_y_range, outer = length(ϵ_y_range)))
+ϵ_y_transition = DataFrame(ϵ_y = repeat(ranges.ϵ_y, inner = range_lengths.ϵ_y),
+	ϵ_y_lead = repeat(ranges.ϵ_y, outer = range_lengths.ϵ_y))
 ϵ_y_transition.prob = vec(transpose(ϵ_y_kernel))
+ϵ_π_transition = DataFrame(ϵ_π = repeat(ranges.ϵ_π, inner = range_lengths.ϵ_π),
+	ϵ_π_lead = repeat(ranges.ϵ_π, outer = range_lengths.ϵ_π))
+ϵ_π_transition.prob = vec(transpose(ϵ_π_kernel))
+
+
 
 # Create a tuple with the transition probabilities (if only one shock remember to include comma)
-transition_probabilities = (ϵ_y = ϵ_y_transition,)
+transition_probabilities = (ϵ_y = ϵ_y_transition,ϵ_π=ϵ_π_transition)
 
 
 """
 Grid-based Mean Dynamics
 """
 
-π_dict = Dict(π_range[i] => i for i = 1:len(π_range))
-y_dict = Dict(y_range[i] => i for i = 1:len(y_range))
-ϵ_y_dict = Dict(ϵ_y_range[i] => i for i = 1:len(ϵ_y_range))
-range_dicts = (π = π_dict, y=y_dict,ϵ_y_lead=ϵ_y_dict)
-ranges = (π_lag =π_range, y_lag = y_range, ϵ_y_range = ϵ_y_range)
 
-n_states=1
-for vv in 1:len(ranges)
-	global n_states *=len(ranges[vv])
-end
-n_states = len(y_range)*len(ϵ_y_range)
+n_states= size(state_grid,1)
+@assert n_states == len(ranges.y)*len(ranges.ϵ_π)*len(ranges.ϵ_y) "Problem with nstates"
 
-state_array = Array(reshape(Array(1:n_states),(len(ϵ_y_range),len(y_range))))
-
-state_t_vars = [:y_lag, :ϵ_y]
-state_tp1_vars = [:y, :ϵ_y_lead]
 endog = indices.endognames
 endog_lead = Symbol.(String.(indices.endognames) .* "_lead")
-endog_lag = Symbol.(String.(indices.endognames) .* "_lag")
 
 use_UP = false
 #function grid_soln(state_grid, indices, beliefs)
-for it in 1:20
+for it in 1:100
     display(join(["Running through iteration ", it]))
 	global df_grid = create_df_grid(state_grid, beliefs, indices)
-	n_states = nrow(df_grid)
-	all_states = 1:n_states
-	df_grid.state_t = all_states
+	df_grid.state_t = 1:n_states
 	df_grid.state_tp1 = Int.(zeros(nrow(df_grid)))
-	df_grid.uncon_prob = zeros(nrow(df_grid))
 	@time df_grid = step_1_map(df_grid, beliefs, indices, options, sval = 0.0)
 
-	# Make sure that the step1 variables correspond to grid points
-	for vv in 1:len(endog)
-		df_grid[:,endog[vv]] = map(x -> findnearest(ranges[endog_lag[vv]],x), Array(df_grid[:,endog[vv]]))
-	end
-	# Find step 2 points and transition probabilities
-	@time global df_grid_new, loss_weights, probs_df = create_trans_probs(df_grid, transition_probabilities,
-		indices, shock_range, parallel = true)
+	# Map endogenous variables to closest grid point
+	@time df_grid = closest_gridpoint(df_grid, endog, ranges)
 
-	# Classify state for t+1
-	# Number of rows in df_grid is number of possible states
-	#df_grid_new = classify_states(df_grid, df_grid_new,range_dicts,state_tp1_vars)
+	# Add transition probabilities for each (t,t+1) combination
+	@time global df_grid_new = create_trans_probs(df_grid, transition_probabilities,
+		indices, shock_range)
 
-	range_lengths = []
-	for vv in 1:len(range_dicts)
-		push!(range_lengths,len(range_dicts[vv]))
-	end
-	prog = Progress(nrow(df_grid_new), dt = 1, desc="Classifying t+1 state: ")
-	for df_row in 1:nrow(df_grid_new)
-		#state_defs = unique(df_grid_new[:,state_t_vars])
-		state_def = df_grid_new[df_row,state_tp1_vars]
+	# Classify state for t+1 (saves having to use equilbirum coditions again)
+	@time df_grid_new = classify_states(df_grid_new, range_dicts, range_lengths, options)
 
-		# Find the index of each variable
-		y_def = y_dict[state_def.y]
-		ϵ_y_def = ϵ_y_dict[state_def.ϵ_y_lead]
-
-		st = 0
-		st += (ϵ_y_def-1)*len(y_range)
-		st += y_def
-		@assert state_labels[st] == Array(state_def)
-
-		# Label state at t+1
-		df_grid_new[df_row,:state_tp1]=st
-		# Use this to evaluate endogenous variables
-		endog_new = df_grid[st,endog]
-		for vv in 1:len(endog_new)
-			df_grid_new[df_row,endog_lead[vv]]= endog_new[vv]
-		end
-		next!(prog)
-	end
-
+	# Use these transition probabilities to compute the expected values for t+1
+	df_train = compute_expectations(df_grid, df_grid_new, shock_range)
 
 	# Generate transition probability matrix for whole system
 	if use_UP
@@ -382,31 +366,22 @@ for it in 1:20
 		CP ./= sum(CP,dims = 2)
 		MP = MC_stationary_fast(CP)
 		#@elapsed MP = MC_stationary(CP)
-		MP = MP./sum(MP)
-		plot(1:length(MP),MP, title = "Marginal prob of states")
+		MP ./=sum(MP)
+		MP .*= nrow(df_train)
+		df_grid.marg_prob = MP
 		# Use Bayes Rule to find unconditional probabilities
-		MP_mat = repeat(MP, outer = [1, len(MP)])
-		UP = MP_mat.*CP
-		UP ./= sum(UP)
-		# Extract unconditional probability associated with each (t,t+1) pair
-		for st in 1:nrow(df_grid_new)
-			df_grid_new[st,:uncon_prob] = UP[df_grid_new.state_t[st],df_grid_new.state_tp1[st]]
-		end
-		df_grid_new.uncon_prob = len(ϵ_y_range).*df_grid_new.uncon_prob
-		display(plot(df_grid_new.y, df_grid_new.uncon_prob, title = "Unconditional prob of y"))
+		display(plot(df_grid_new.y, df_grid_new.marg_prob, title = "Marginal probability of y"))
 
-		df_train = df_grid_new[(df_grid_new.uncon_prob .> 1e-16),:]
-		loss_weights = Matrix(transpose(df_train.uncon_prob))
+		df_train = df_grid_new[(df_grid_new.marg_prob .> 1e-16),:]
+		loss_weights = Matrix(transpose(df_train.marg_prob))
 		loss_weights ./=(sum(loss_weights)/size(loss_weights,2))
 		loss_weights = repeat(loss_weights, len(indices.expectnames_all))
 
 		@time global beliefs = update_beliefs(df_train, beliefs, indices, options,
 			epochs = 20, cycles = 10, verbose = true, weights = loss_weights)
 	else
-		df_train = compute_expectations(df_grid, df_grid_new, shock_range)
-
 		@time global beliefs = update_beliefs(df_train, beliefs, indices, options,
-			epochs = 20, cycles = 10, verbose = true)
+			epochs = 10, cycles = 20, verbose = true, cutoff = false)
 
 	end
 
@@ -486,13 +461,13 @@ Plot IRFs
 """
 
 paths1 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
-	magnitude = -1.5, persistence = par.ρ_y, show_plot = false)
+	magnitude = -0.8, persistence = par.ρ_y, show_plot = false)
 paths2 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
-	magnitude = 1.5, persistence = par.ρ_y, show_plot = false)
+	magnitude = 1.0, persistence = par.ρ_y, show_plot = false)
 paths3 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
-	magnitude = -0.3, persistence = par.ρ_y, show_plot = false)
-paths4 = irf(:ϵ_y, lower_stoch, beliefs, shock_period = 5, periods = 100,
 	magnitude = 0.3, persistence = par.ρ_y, show_plot = false)
+paths4 = irf(:ϵ_y, lower_stoch, beliefs, shock_period = 5, periods = 100,
+	magnitude = 0.8, persistence = par.ρ_y, show_plot = false)
 plot(paths1.π, label ="Inflation", xlabel = "Periods", legend = :bottomright,ylims = (-8.0,8.0))
 plot!(paths1.y, label ="Output");plot!(paths1.ϵ_y, label ="Shock")
 plot(paths2.π, label ="Inflation", xlabel = "Periods", legend = false,ylims = (-8.0,8.0))
@@ -514,7 +489,7 @@ plot!(paths4.π, label ="Inflation", xlabel = "Periods", legend = false, subplot
 plot!(paths4.y, label ="Output", subplot=4);plot!(paths4.ϵ_y, label ="Shock", subplot=4)
 
 display(irf_plot)
-savefig("figures/NK_irf_sim.png")
+#savefig("figures/NK_irf_sim.png")
 
 
 """
@@ -540,20 +515,21 @@ display(ss_plot)
 ## Plot perfect foresight paths
 phase_plot = ss_plot
 initial_ss = deepcopy(central)
-starts = [(π=-4.0,y=-6.0,ϵ_y=-0.0,periods=2,arrows=[1]),
+starts = [(π=-4.0,y=-6.0,ϵ_y=-0.0,periods=3,arrows=[1]),
 	(π=-4.0,y=-1.8,ϵ_y=0.0,periods=43,arrows=[27,32]),
 	(π=-4.0,y=-1.6,ϵ_y=0.0,periods=43,arrows=[]),
 	(π=3.5,y=2.0,ϵ_y=0.0,periods=12,arrows=[6]),
-	(π=0.0,y=-3.9,ϵ_y=0.0,periods=60,arrows=[58]),
+	(π=0.0,y=-3.9,ϵ_y=0.0,periods=60,arrows=[55]),
 	(π=0.0,y=-3.7,ϵ_y=0.0,periods=100,arrows=[18,90]),
-	(π=-1.75,y=5.0,ϵ_y=0.0,periods=60,arrows=[35])
+	(π=-1.75,y=5.0,ϵ_y=0.0,periods=60,arrows=[35]),
+	(π=-0.0,y=-0.5,ϵ_y=0.0,periods=60,arrows=[35])
 	]
 for start in starts
 	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
 	paths1 = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = 100,
 		magnitude = start[:ϵ_y], persistence = par.ρ_y, show_plot = false)
-	phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:start[:periods],
-		v_points = 1:start[:periods])
+	phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:(start[:periods]-1),
+		v_points = 2:start[:periods])
 end
 display(phase_plot)
 savefig("figures/NK_phase_sim.png")
