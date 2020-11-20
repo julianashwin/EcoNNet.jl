@@ -51,10 +51,10 @@ State the equilibrium conditions of the model as a function which returns
     y::Float64 = x[2]
 
     # p[t] = ϕ_pp*pe[t+1] + ϕ_py*y[t] + α_2*y[t]^2 - α_3*y[t]^3 + ϵ_p[t]
-    F[1] =  max(par.β*Eπ_lead + par.κ*y,par.π_lim) - π ::Float64
+    F[1] =  max(par.β*Eπ_lead + par.κ*y,par.π_lim) + ϵ_π - π ::Float64
     # y[t] = η*y[t-1] + ϕ_yp*p[t] + ϵ_y[t]
 	r = max(par.ϕ_π*π + par.ϕ_y*y, par.R_lim)
-    F[2] = max((1-par.η)*Ey_lead + par.η*y_lag - par.σ*(r - Eπ_lead) , par.y_lim)+ ϵ_y - y ::Float64
+    F[2] = max((1-par.η)*Ey_lead + par.η*y_lag - par.σ*(r - Eπ_lead) , par.y_lim) + ϵ_y - y ::Float64
 
     return F
 end
