@@ -47,10 +47,12 @@ A function that returns support and transition kernel for an N-state
 	m: must be a positive scalar
 	N: number of states, must be a positive integer
 """
-function Rouwenhorst(p::Float64,q::Float64,ψ::Float64,N::Int)
+function Rouwenhorst(ρ::Float64, σ::Float64, N::Int64)
 
-	vtest = [p, q, ψ, N]
-	@assert (size(vtest,1) == 4) "Rouwenhorst(): argument dimensions incorrect -- must all be scalars."
+	p = (1 + ρ)/2
+	q = p
+	ψ = sqrt(σ^2/(1 - ρ^2))*sqrt(N-1)
+
 	@assert (p >= 0 && p < 1) "Rouwenhorst(): p must be between zero and 1."
 	@assert (q >= 0 && q < 1) "Rouwenhorst(): q must be between zero and 1."
 	@assert (ψ > 0) "Rouwenhorst(): m must be positive."
@@ -80,22 +82,10 @@ end
 """
 Function that creates a transition kernel from a dataframe with transition probabilities
 """
-function create_kernel(df::DataFrame, poss_states::Int64)
-
+function create_kernel(df::DataFrame, n_states::Int64)::SparseMatrixCSC{Float64,Int64}
 	# Create the empty transition probability matrix
-	CP::Array{Float64,2} = zeros(poss_states, poss_states)
-
-	# Pick out the relevant variables from df
-	trans_probs::Array{Real,2} = Array{Real,2}(df_grid_new[:,[:state_t,:state_tp1,
-		:trans_prob]])
-
-	# Populate the CP matrix with the transition probabilities
-	prog = Progress(size(trans_probs,1), dt = 1, desc="Populating CP matrix: ")
-	for st in 1:size(trans_probs,1)
-		CP[trans_probs[st,1],trans_probs[st,2]] += trans_probs[st,3]
-		next!(prog)
-	end
-
+	CP = sparse(df.state_t, df.state_tp1, df.trans_prob,
+            n_states, n_states)
 	return CP
 end
 

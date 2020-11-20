@@ -5,7 +5,7 @@ General convention on ordering variables:
 """
 
 # Import dependencies
-using Distributions, Parameters, LinearAlgebra, QuantEcon
+using Distributions, Parameters, LinearAlgebra, QuantEcon, SparseArrays
 using Flux, Distributed, SharedArrays, JLD, NLsolve, ProgressMeter
 using Flux: throttle, params, mse, glorot_uniform, @epochs
 using IterTools: ncycle, NCycle

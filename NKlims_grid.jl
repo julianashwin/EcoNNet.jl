@@ -18,14 +18,14 @@ leads and lags are specified as a `_lead` or `_lag` suffix
     exogenous = [:ϵ_π, :ϵ_y],
     states = [:y_lag, :ϵ_π, :ϵ_y],
 	auxiliary = [:r],
-    N = 500000, num_nodes = 24, activation = relu, window = 40000)
+    N = 500000, num_nodes = 32, activation = relu, window = 40000)
 
 """
 Define the parameters as a Named Tuple.
 """
 
 @everywhere par = (β = 0.95, κ = 0.1,
-	η = 0.95, σ = 0.25, ϕ_π = 1.5, ϕ_y = 1.0,
+	η = 0.9, σ = 0.25, ϕ_π = 1.5, ϕ_y = 1.0,
 	ρ_π = 0.5, σ_π = 0.001, ρ_y = 0.75, σ_y = 0.05,
 	R_lim = -2.0, π_lim = -3.0, y_lim = -5.0);
 
@@ -260,34 +260,27 @@ Use Network in grid solution method
 """
 ## Rouwenhorst approximation of shock
 # ϵ_y
-p_y = (1 + par.ρ_y)/2
-q_y = p_y
-N = 41
-ψ_y = sqrt(par.σ_y^2/(1 - par.ρ_y^2))*sqrt(N-1)
-ϵ_y_range, ϵ_y_kernel = Rouwenhorst(p_y,q_y,ψ_y,N)
-gr()
+N = 21
+ϵ_y_range, ϵ_y_kernel = Rouwenhorst(par.ρ_y,par.σ_y, N)
 heatmap(ϵ_y_range,
     ϵ_y_range, ϵ_y_kernel,
     c=cgrad([:blue, :white,:red, :yellow]),
     xlabel="shock(t+1)", ylabel="shock(t)",
-    title="My title")
+    title="Epsilon y approximation")
 # ϵ_π
-p_π = (1 + par.ρ_π)/2
-q_π = p_π
-N = 3
-ψ_π = sqrt(par.σ_π^2/(1 - par.ρ_π^2))*sqrt(N-1)
-ϵ_π_range, ϵ_π_kernel = Rouwenhorst(p_π,q_π,ψ_π,N)
+N = 21
+ϵ_π_range, ϵ_π_kernel = Rouwenhorst(par.ρ_π, par.σ_π, N)
 gr()
 heatmap(ϵ_π_range,
     ϵ_π_range, ϵ_π_kernel,
     c=cgrad([:blue, :white,:red, :yellow]),
     xlabel="shock(t+1)", ylabel="shock(t)",
-    title="My title")
+    title="Epsilon pi approximation")
 
 
 display(join(["Order in grid should be ",indices.statenames_all]))
-π_range = Array(-4.0:0.001:4.0)
-y_range = Array(-8.0:0.01:6.0)
+π_range = Array(-4.0:0.001:6.0)
+y_range = Array(-6.0:0.01:3.0)
 #ϵ_y_range = Array{Float64}(-2.5:0.25:2.5)  # par.σ_y* randn(10)
 #ϵ_y_density = round.(pdf.(Normal(0.0, par.σ_y),ϵ_y_range), digits = 12)
 #ϵ_y_density = len(ϵ_y_density).*ϵ_y_density./sum(ϵ_y_density)
@@ -339,7 +332,7 @@ endog_lead = Symbol.(String.(indices.endognames) .* "_lead")
 
 use_UP = false
 #function grid_soln(state_grid, indices, beliefs)
-for it in 1:100
+for it in 1:10
     display(join(["Running through iteration ", it]))
 	global df_grid = create_df_grid(state_grid, beliefs, indices)
 	df_grid.state_t = 1:n_states
@@ -361,7 +354,7 @@ for it in 1:100
 
 	# Generate transition probability matrix for whole system
 	if use_UP
-		global CP = create_kernel(df_grid_new, n_states)
+		CP = create_kernel(df_grid_new, n_states)
 		#display(heatmap(CP))
 		CP ./= sum(CP,dims = 2)
 		MP = MC_stationary_fast(CP)
@@ -407,14 +400,16 @@ for it in 1:100
 		display(plot!(title = join(["Iteration: ", it])))
 
 		sleep(5)
-		df_zero = df_train[(df_train.ϵ_y .== 0),:]
+		df_zero = df_train[(df_train.ϵ_y .== 0).*(df_train.ϵ_π .== 0),:]
 		plot(layout = (4,2))
 		plot!(df_zero.y_lag,df_zero.π, xlab = "y_lag", ylab = "pi", label = "", subplot=1)
 		plot!(df_zero.y_lag,df_zero.Eπ, xlab = "y_lag", ylab = "Epi", label = "", subplot=3)
 		plot!(df_zero.y_lag,df_zero.π_lead, xlab = "y_lag", ylab = "pi[+1]", label = "", subplot=5)
 		plot!(df_zero.y_lag,df_zero.Eπ_lead, xlab = "y_lag", ylab = "Epi[+1]", label = "", subplot=7)
 		plot!(df_zero.y_lag,df_zero.y, xlab = "y_lag", ylab = "y", label = "", subplot=2)
+		plot!(df_zero.y_lag, df_zero.y_lag, label = "", subplot = 2, ylims = [par.y_lim,4])
 		plot!(df_zero.y_lag,df_zero.Ey, xlab = "y_lag", ylab = "Ey", label = "", subplot=4)
+		plot!(df_zero.y_lag, df_zero.y_lag, label = "", subplot = 4, ylims = [par.y_lim,4])
 		plot!(df_zero.y_lag,df_zero.y_lead, xlab = "y_lag", ylab = "y[+1]", label = "", subplot=6)
 		plot!(df_zero.y_lag,df_zero.Ey_lead, xlab = "y_lag", ylab = "Ey[+1]", label = "", subplot=8)
 		display(plot!())
@@ -423,7 +418,8 @@ for it in 1:100
 end
 
 
-
+zero_ss = df_grid_new[(df_grid_new.y_lag.== 0.)*
+df_zero = df_train[(df_train.ϵ_y .== 0).*(df_train.ϵ_π .== 0).*(df_train.y_lag .== 0),:]
 
 
 
@@ -463,9 +459,9 @@ Plot IRFs
 paths1 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
 	magnitude = -0.8, persistence = par.ρ_y, show_plot = false)
 paths2 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
-	magnitude = 1.0, persistence = par.ρ_y, show_plot = false)
+	magnitude = 0.2, persistence = par.ρ_y, show_plot = false)
 paths3 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
-	magnitude = 0.3, persistence = par.ρ_y, show_plot = false)
+	magnitude = -0.2, persistence = par.ρ_y, show_plot = false)
 paths4 = irf(:ϵ_y, lower_stoch, beliefs, shock_period = 5, periods = 100,
 	magnitude = 0.8, persistence = par.ρ_y, show_plot = false)
 plot(paths1.π, label ="Inflation", xlabel = "Periods", legend = :bottomright,ylims = (-8.0,8.0))
@@ -478,7 +474,7 @@ plot(paths4.π, label ="Inflation", xlabel = "Periods", legend = false,ylims = (
 plot!(paths4.y, label ="Output");plot!(paths4.ϵ_y, label ="Shock")
 
 # All plots together
-irf_plot = plot(layout = (2,2),ylims = (-8.0,8.0),size=(1000,600))
+irf_plot = plot(layout = (2,2),ylims = (-6.0,1.0),size=(1000,600))
 plot!(paths1.π, label ="Inflation", xlabel = "Periods", legend = :topright, subplot=1)
 plot!(paths1.y, label ="Output");plot!(paths1.ϵ_y, label ="Shock")
 plot!(paths2.π, label ="Inflation", xlabel = "Periods", legend = false, subplot=2)
@@ -516,13 +512,13 @@ display(ss_plot)
 phase_plot = ss_plot
 initial_ss = deepcopy(central)
 starts = [(π=-4.0,y=-6.0,ϵ_y=-0.0,periods=3,arrows=[1]),
-	(π=-4.0,y=-1.8,ϵ_y=0.0,periods=43,arrows=[27,32]),
-	(π=-4.0,y=-1.6,ϵ_y=0.0,periods=43,arrows=[]),
-	(π=3.5,y=2.0,ϵ_y=0.0,periods=12,arrows=[6]),
-	(π=0.0,y=-3.9,ϵ_y=0.0,periods=60,arrows=[55]),
-	(π=0.0,y=-3.7,ϵ_y=0.0,periods=100,arrows=[18,90]),
-	(π=-1.75,y=5.0,ϵ_y=0.0,periods=60,arrows=[35]),
-	(π=-0.0,y=-0.5,ϵ_y=0.0,periods=60,arrows=[35])
+	(π=-2.0,y=-2.5,ϵ_y=0.0,periods=10,arrows=[2,8]),
+	(π=-2.0,y=-2.2,ϵ_y=0.0,periods=12,arrows=[6]),
+	(π=-2.0,y=-1.8,ϵ_y=0.0,periods=10,arrows=[8]),
+	(π=2.0,y=3.0,ϵ_y=0.0,periods=30,arrows=[25]),
+	#(π=0.0,y=-3.7,ϵ_y=0.0,periods=100,arrows=[18,90]),
+	#(π=-1.75,y=5.0,ϵ_y=0.0,periods=60,arrows=[35]),
+	#(π=-0.0,y=-0.5,ϵ_y=0.0,periods=60,arrows=[35])
 	]
 for start in starts
 	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
