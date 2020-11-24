@@ -416,6 +416,8 @@ for it in 1:10
 
 	end
 end
+#save("networks/NKlims_grid_32nodes.jld2", "beliefs", beliefs)
+#beliefs = load("networks/meandyn_2eq_both_24nodes.jld2", "beliefs");
 
 
 zero_ss = df_grid_new[(df_grid_new.y_lag.== 0.)*
