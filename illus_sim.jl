@@ -3,8 +3,9 @@ cd("/Users/julianashwin/Documents/GitHub/EcoNNet.jl")
 """
 Add extra cores if you want to parallelise later
 """
+
 using Distributed
-addprocs(2)
+#addprocs(2)
 #rmprocs(2)
 workers()
 
@@ -151,12 +152,18 @@ Plot steady state conditions and perfect foresight paths
 """
 #using Plotly, PlotlyJS
 #plotly()
-plot_points = -4.0:0.01:4.0;
-ss_plot = plot(xlabel = "Output (state)", xlims = (-4.0,4.0),
-    ylabel = "Inflation (control)", ylims = (-4.0, 4.0),legend=:topright)
-plot!(plot_points,NKPC_condition.(plot_points), label = "Phillips Curve", color = :black)
-display(plot!(IS_condition.(plot_points),plot_points, label = "IS Curve", color = :green))
-# Plot perfect foresight paths
+function plot_ss()
+	plot_points = -4.0:0.01:4.0;
+	ss_plot = plot(xlabel = "Output (state)", xlims = (-4.0,4.0),
+    	ylabel = "Inflation (control)", ylims = (-4.0, 4.0),legend=:topright)
+		plot!(plot_points,NKPC_condition.(plot_points), label = "Phillips Curve", color = :black)
+		display(plot!(IS_condition.(plot_points),plot_points, label = "IS Curve", color = :green))
+		# Plot perfect foresight paths
+	return ss_plot
+end
+
+for tt in 1:50
+plot_ss()
 initial_ss = deepcopy(central)
 starts = [(π=0.75,y=-1.5,periods=100,arrows=[10,60]),
 	(π=-0.75,y=1.5,periods=100,arrows=[10,60]),
@@ -172,7 +179,7 @@ for start in starts
 	phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:start[:periods],
 		v_points = 1:start[:periods])
 end
-display(ss_plot)
+
 savefig("figures/phase_illus_perf.png")
 
 """

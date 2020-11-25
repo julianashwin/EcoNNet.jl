@@ -76,7 +76,7 @@ Function that creates a DataFrame from a grid of initial states and beliefs
 function create_df_grid(state_grid::Array{Float64,2}, beliefs::Chain, indices::EcoNNetIndices;
 	exp_lb::Float64 = NaN, exp_ub::Float64 = NaN)
     # Create predictions from the beliefs and state_grid
-    prediction_grid::Array{Float64,2} = Tracker.data(beliefs(Matrix(transpose(state_grid))))
+    prediction_grid::Array{Float64,2} = beliefs(Matrix(transpose(state_grid)))
     prediction_grid = Matrix((transpose(prediction_grid)))
 	if !isnan(exp_lb)
 		prediction_grid = max.(prediction_grid, exp_lb)
@@ -154,13 +154,13 @@ function update_beliefs(df::DataFrame, beliefs::Chain, indices::EcoNNetIndices, 
 		weights =weights[:,idx]
 	end
 
-	initial_loss::Float64 = Tracker.data(WMSE(inputs,outputs,weights))
+	initial_loss::Float64 = WMSE(inputs,outputs,weights)
 	display(join(["Initial loss: ", initial_loss]))
 
 	loss_iters = zeros(epochs)
 	for ii in 1:epochs
     	Flux.train!((x,y) -> WMSE(x,y,weights), params(beliefs), train_df, options.optim());
-		loss_iters[ii] = Tracker.data(WMSE(inputs,outputs,weights))
+		loss_iters[ii] = WMSE(inputs,outputs,weights)
 		if verbose
 			display(join(["Iter: ", ii, ", Loss: ", loss_iters[ii]]))
 		end
@@ -172,7 +172,7 @@ function update_beliefs(df::DataFrame, beliefs::Chain, indices::EcoNNetIndices, 
 			end
 		end
 	end
-    display(join(["Weighted forecast error is ", Tracker.data(WMSE(inputs, outputs, weights))]))
+    display(join(["Weighted forecast error is ", WMSE(inputs, outputs, weights))])
 
     return beliefs
 end

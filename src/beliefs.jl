@@ -68,7 +68,7 @@ end
 Generate prediction from beliefs and inputs
 """
 function predict!(inputs::Array{Float64,1}, beliefs::Chain)
-	outputs::Array{Float64,1} = Tracker.data(beliefs(inputs))
+	outputs::Array{Float64,1} = beliefs(inputs)
 	return outputs
 end
 function predict!(inputs::Array{Float64,1}, beliefs::Dict)
@@ -138,7 +138,7 @@ function learn!(beliefs::Chain, s::DataFrame, tt::Int64, options::EcoNNetOptions
 			val_loss[ii] = loss(val_inputs, val_outputs)::Float64
 			#loss(train_inputs, train_outputs)
 		else
-			current_loss = Tracker.data(loss(inputs, outputs))
+			current_loss = loss(inputs, outputs)
 			val_loss[ii] = current_loss
 		end
 		if ii > 1 && val_loss[ii] >= val_loss[ii-1]
