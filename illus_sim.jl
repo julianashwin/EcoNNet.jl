@@ -4,6 +4,7 @@ cd("/Users/julianashwin/Documents/GitHub/EcoNNet.jl")
 Add extra cores if you want to parallelise later
 """
 
+using LaTeXStrings, TableView
 using Distributed
 #addprocs(2)
 #rmprocs(2)
@@ -24,7 +25,7 @@ leads and lags are specified as a `_lead` or `_lag` suffix
     exogenous = [:ϵ_π,:ϵ_y],
     states = [:y_lag, :ϵ_π, :ϵ_y],
 	auxiliary = [:r],
-    N = 500000, num_nodes = 64, activation = σ, window = 40000)
+    N = 500000, num_nodes = 24, activation = σ, window = 40000)
 
 @everywhere beliefs = initialise_beliefs(options)
 
@@ -151,36 +152,84 @@ s = initialise_df(s, lower, gap = 2, steadystate_alt = upper)
 Plot steady state conditions and perfect foresight paths
 """
 #using Plotly, PlotlyJS
-#plotly()
-function plot_ss()
-	plot_points = -4.0:0.01:4.0;
-	ss_plot = plot(xlabel = "Output (state)", xlims = (-4.0,4.0),
-    	ylabel = "Inflation (control)", ylims = (-4.0, 4.0),legend=:topright)
+pyplot()
+plot_points = -4.0:0.01:4.0;
+function plot_ss(plot_points)
+	ss_plot = plot(xlabel = L"y_{t-1}", xlims = (-4.0,4.0),
+    	ylabel = L"\pi_t", ylims = (-4.0, 4.0),legend=:bottomright, yguidefontrotation=-90)
 		plot!(plot_points,NKPC_condition.(plot_points), label = "Phillips Curve", color = :black)
 		display(plot!(IS_condition.(plot_points),plot_points, label = "IS Curve", color = :green))
 		# Plot perfect foresight paths
 	return ss_plot
 end
 
-for tt in 1:50
-plot_ss()
+#for tt in 1:50
+plot_ss(plot_points)
 initial_ss = deepcopy(central)
 starts = [(π=0.75,y=-1.5,periods=100,arrows=[10,60]),
 	(π=-0.75,y=1.5,periods=100,arrows=[10,60]),
-	(π=0.0,y=-1.5,periods=61,arrows=[10,60]),
-	(π=0.0,y=1.5,periods=61,arrows=[10,60]),
+	(π=0.0,y=-1.5,periods=62,arrows=[10,60]),
+	(π=0.0,y=1.5,periods=62,arrows=[10,60]),
 	(π=-1.024,y=-3.0,periods=100,arrows=[10,55]),
-	(π=-2.351,y=-3.0,periods=50,arrows=[25]),
+	(π=-2.350785,y=-3.0,periods=70,arrows=[25]),
 	(π=1.024,y=3.0,periods=100,arrows=[10,55]),
-	(π=2.351,y=3.0,periods=50,arrows=[25])]
+	(π=2.350785,y=3.0,periods=70,arrows=[25])]
 for start in starts
 	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
 	paths1 = pf_path(initial_ss, periods = start[:periods])
-	phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:start[:periods],
-		v_points = 1:start[:periods])
-end
 
-savefig("figures/phase_illus_perf.png")
+	if start == starts[1]
+		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 1:(start[:periods]-1), label = "Perfect foresight paths", arrow_size = .5)
+	else
+		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 1:(start[:periods]-1), label = "", arrow_size = .5)
+	end
+end
+plot!(size = (600,400))
+savefig("figures/phase_illus_perf.pdf")
+
+
+starts = [(π=0.75,y=-1.5,periods=100,arrows=[10,60]),
+	(π=-0.75,y=1.5,periods=100,arrows=[10,60]),
+	(π=0.0,y=-1.5,periods=100,arrows=[10,60]),
+	(π=0.0,y=1.5,periods=100,arrows=[10,60]),
+	(π=-1.024,y=-3.0,periods=80,arrows=[10,55]),
+	(π=-2.350785,y=-3.0,periods=60,arrows=[25]),
+	(π=1.024,y=3.0,periods=80,arrows=[10,55]),
+	(π=2.350785,y=3.0,periods=60,arrows=[25])]
+
+periods = 100
+
+anim = @animate for tt in 2:periods
+	plot_ss(plot_points)
+	plot!(size = (600,400))
+	for start in starts
+		initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
+		paths1 = pf_path(initial_ss, periods = periods)
+
+
+		if start == starts[1]
+			phase_arrow_plot(paths1, [:y,:π], arrow_points=[], h_points = 2:min(start[:periods], tt),
+				v_points = 1:(min(start[:periods], tt)-1), label = "Perfect foresight paths", arrow_size = .5)
+			if tt >=3
+				phase_arrow_plot(paths1, [:y,:π], arrow_points=[min(start[:periods], tt)-2], h_points = 2:min(start[:periods], tt),
+					v_points = 1:(min(start[:periods], tt)-1), label = "", arrow_size = .5)
+			end
+		else
+			phase_arrow_plot(paths1, [:y,:π], arrow_points=[], h_points = 2:min(start[:periods], tt),
+				v_points = 1:(min(start[:periods], tt)-1), label = "", arrow_size = .5)
+			if tt >=3
+				phase_arrow_plot(paths1, [:y,:π], arrow_points=[min(start[:periods], tt)-2], h_points = 2:min(start[:periods], tt),
+					v_points = 1:(min(start[:periods], tt)-1), label = "", arrow_size = .5)
+			end
+		end
+	end
+
+end
+gif(anim, "figures/phase_illus_perf.gif", fps = 15)
+
+
 
 """
 Test the equilibrium conditions and step! function by confirming the steady states
@@ -204,6 +253,7 @@ display(equilibrium_conditions_fast(F1,starting_values1, states1, predictions1))
 Initialise beliefs by training on (some of the) steady state(s)
 """
 
+@everywhere beliefs = initialise_beliefs(options)
 s = initialise_df(s, lower, gap = 500, steadystate_alt = upper)
 @time beliefs = learn!(beliefs, s, options.N, options, indices, loss)
 
@@ -211,9 +261,11 @@ s = initialise_df(s, lower, gap = 500, steadystate_alt = upper)
 """
 Run learning simulation
 """
+noise_π = par.σ_π*randn(nrow(s))
+s.ϵ_π = simulate_ar(par.ρ_π, par.σ_π, options.N, noise_π)
 noise_y = par.σ_y*randn(nrow(s))
 s.ϵ_y = simulate_ar(par.ρ_y, par.σ_y, options.N, noise_y)
-plot(s.ϵ_y[1:2000])
+plot(s.ϵ_y[1:200])
 options.burnin = 50000;
 s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], lower, gap = 500, steadystate_alt = upper);
 s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
@@ -224,48 +276,87 @@ options.plot_vars = [:π, :y, :Eπ, :Ey]
 
 # Simulate the learning for a set number of periods
 gr() # Set GR backend for plots as it's the fastest
-#s[300000:400000,:]= s[400000:options.N,:]
-@time beliefs,s = simulate_learning(100000:options.N, s, beliefs, indices, options)
+s[100000:200000,:]= s[400000:options.N,:]
+@time beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
 
 # Plot simulated time series
 pyplot()
-plot_range = (400000-3999):(400000-2999)
-plot(layout=(2,1), xlabel = "Periods",legend = false)
-plot!(s.π[plot_range], subplot = 1, ylabel = "Inflation")
-plot!(s.y[plot_range], subplot = 2, ylabel = "Output")
-plot!(size = (1000,400), left_margin = 7mm)
-savefig("figures/illus_sim_series.png")
+plot_range = (500000-5999):(500000-4999)
+plot(layout=(2,1),legend = false,  link = :x)
+plot!(s.π[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
+plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
+plot!(size = (600,300))
+savefig("figures/illus_sim_series.pdf")
 
 
 """
 Plot phase diagram
 """
 
-phase_plot = plot(xlabel = "Output (state)", xlims = (-4.0,4.0),
-	ylabel = "Inflation (control)", ylims = (-4.0, 4.0),legend = :topright)
-plot!(plot_points,NKPC_condition.(plot_points), label = "Phillips Curve", color = :black)
-plot!(IS_condition.(plot_points),plot_points, label = "IS Curve", color = :green)
-
+plot_ss(plot_points)
 initial_ss = deepcopy(central)
-starts = [(π=3.0,y=3.0,periods=100,arrows=[10,80]),
-	(π=-3.,y=-3.,periods=100,arrows=[10,80]),
-	(π=-0.1,y=-0.1,periods=110,arrows=[30,40,100]),
-	(π=-0.05,y=-0.08,periods=140,arrows=[45,55,135]),
-	(π=1.0,y=1.0,periods=100,arrows=[9]),
-	(π=-1.0,y=1.0,periods=100,arrows=[9]),
-	(π=1.0,y=-1.0,periods=100,arrows=[9]),
-	(π=-1.0,y=-1.0,periods=100,arrows=[9])
+starts = [(π=3.0,y=3.0,periods=100,arrows=[10]),
+	(π=-3.,y=-3.,periods=100,arrows=[10]),
+	(π=-0.008,y=-0.008,periods=100,arrows=[42, 65]),
+	(π=-0.03,y=-0.03,periods=100,arrows=[42, 65]),
+	#(π=1.0,y=1.0,periods=100,arrows=[9]),
+	#(π=-1.0,y=1.0,periods=100,arrows=[9]),
+	#(π=1.0,y=-1.0,periods=100,arrows=[9]),
+	#(π=-1.0,y=-1.0,periods=100,arrows=[9])
 	]
 for start in starts
 	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths = irf(:ϵ_y, initial_ss, beliefs, shock_period = 5, periods = start[:periods],
+	paths = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = start[:periods],
 		magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
 	paths.y_lag = cat(start[:y],paths.y[1:(start.periods -1 )],dims=1)
-	phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows].-5, h_points = 5:(start[:periods]-1),
-		v_points = 6:start[:periods])
+	if start == starts[1]
+		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 2:(start[:periods]), label = "Equilibrium paths", arrow_size = .5,
+			final_arrow = true)
+	else
+		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows].-5, h_points = 2:(start[:periods]),
+			v_points = 2:start[:periods], arrow_size = .5, final_arrow = true)
+		end
 end
-display(phase_plot)
-savefig("figures/phase_illus_sim.png")
+plot!(size = (600,400))
+savefig("figures/phase_illus_sim.pdf")
+
+starts = [(π=3.0,y=3.0,periods=100,arrows=[10]),
+	(π=-3.,y=-3.,periods=100,arrows=[10]),
+	(π=-0.008,y=-0.008,periods=100,arrows=[40, 65]),
+	(π=-0.03,y=-0.03,periods=100,arrows=[40, 65]),
+	#(π=1.0,y=1.0,periods=100,arrows=[9]),
+	#(π=-1.0,y=1.0,periods=100,arrows=[9]),
+	#(π=1.0,y=-1.0,periods=100,arrows=[9]),
+	#(π=-1.0,y=-1.0,periods=100,arrows=[9])
+	]
+periods = 100
+anim = @animate for tt in 2:periods
+	plot_ss(plot_points)
+	for start in starts
+		initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
+		paths1 = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = tt,
+			magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
+		paths1.y_lag = cat(start[:y],paths1.y[1:(tt -1 )],dims=1)
+		if start == starts[1]
+			phase_arrow_plot(paths1, [:y_lag,:π], arrow_points=[], h_points = 2:min(start[:periods], tt),
+				v_points = 2:(min(start[:periods], tt)), label = "Perfect foresight paths", arrow_size = .5)
+			if tt >=3
+				phase_arrow_plot(paths1, [:y_lag,:π], arrow_points=[min(start[:periods], tt)-2], h_points = 2:min(start[:periods], tt),
+					v_points = 2:(min(start[:periods], tt)), label = "", arrow_size = .5)
+			end
+		else
+			phase_arrow_plot(paths1, [:y_lag,:π], arrow_points=[], h_points = 2:min(start[:periods], tt),
+				v_points = 2:(min(start[:periods], tt)), label = "", arrow_size = .5)
+			if tt >=3
+				phase_arrow_plot(paths1, [:y_lag,:π], arrow_points=[min(start[:periods], tt)-2], h_points = 2:min(start[:periods], tt),
+					v_points = 2:(min(start[:periods], tt)), label = "", arrow_size = .5)
+			end
+		end
+	end
+
+end
+gif(anim, "figures/phase_illus_sim.gif", fps = 15)
 
 
 """
@@ -298,16 +389,16 @@ paths4 = irf(:ϵ_y, lower_stoch, beliefs, shock_period = 5, periods = 50,
 	magnitude = 1.5, persistence = par.ρ_y, show_plot = false)
 plot(paths1.π, label ="Inflation", xlabel = "Periods", legend = :bottomright,ylims = (-3.0,3.0))
 plot!(paths1.y, label ="Output");plot!(paths1.ϵ_y, label ="Shock")
-savefig("figures/irf1_illus_sim.png")
+#savefig("figures/irf1_illus_sim.png")
 plot(paths2.π, label ="Inflation", xlabel = "Periods", legend = false,ylims = (-3.0,3.0))
 plot!(paths2.y, label ="Output");plot!(paths2.ϵ_y, label ="Shock")
-savefig("figures/irf2_illus_sim.png")
+#savefig("figures/irf2_illus_sim.png")
 plot(paths3.π, label ="Inflation", xlabel = "Periods", legend = false,ylims = (-3.0,3.0))
 plot!(paths3.y, label ="Output");plot!(paths3.ϵ_y, label ="Shock")
-savefig("figures/irf3_illus_sim.png")
+#savefig("figures/irf3_illus_sim.png")
 plot(paths4.π, label ="Inflation", xlabel = "Periods", legend = false,ylims = (-3.0,3.0))
 plot!(paths4.y, label ="Output");plot!(paths4.ϵ_y, label ="Shock")
-savefig("figures/irf4_illus_sim.png")
+#savefig("figures/irf4_illus_sim.png")
 
 # All plots together
 irf_plot = plot(layout = (2,2),ylims = (-3.0,3.0),size=(1000,600))
@@ -321,7 +412,7 @@ plot!(paths4.π, label ="Inflation", xlabel = "Periods", legend = false, subplot
 plot!(paths4.y, label ="Output", subplot=4);plot!(paths4.ϵ_y, label ="Shock", subplot=4)
 
 display(irf_plot)
-savefig("figures/irf_illus_sim.png")
+#savefig("figures/irf_illus_sim.png")
 
 
 
@@ -333,7 +424,7 @@ s.Ey_error = s.Ey-s.y
 s.Eπ_lead_error = vcat((s.Eπ_lead[1:(options.N-1)]-s.π[2:(options.N)]),[0.])
 plot(s.Eπ_lead_error)
 
-plot_range=310001:500000
+plot_range=410001:500000
 y_range = Array(-6.0:0.05:6.0)
 π_range= Array(-3.5:0.05:3.5)
 heatmap_df = deepcopy(s[plot_range,:])
@@ -350,10 +441,11 @@ for ππ in 1:len(π_range)
 	end
 	next!(prog)
 end
-heatmap(y_range,π_range,heatmap_mat,c=ColorGradient([:white,:blue]),
-	xlabel= "Output (state)",ylabel="Inflation (control)")
+
+heatmap(y_range,π_range,heatmap_mat, c=:coolwarm,
+	xlabel= L"y_{t-1}",ylabel=L"\pi_t")
 plot!(size=(800,300))
-savefig("figures/heatmap_illus_sim.png")
+savefig("figures/heatmap_illus_sim.pdf")
 
 
 avg_error = zeros(len(y_range))
@@ -367,13 +459,15 @@ for yy in 1:len(y_range)
 	end
 end
 
-
+using Plots.PlotMeasures
+pyplot()
 plot(layout = (2,1), link = :x)
-heatmap!(y_range,π_range,heatmap_mat, subplot=1, c=ColorGradient([:white,:blue]),
-	ylabel="Inflation (control)",legend =:left)
-plot!(y_range, avg_error,subplot=2, xlabel= "Output (state)", ylabel= "Avg. Inflation forecast error",
-	left_margin = 5mm,legend=:false)
-savefig("figures/heatmap_errors_illus_sim.png")
+heatmap!(y_range,π_range,heatmap_mat, subplot=1, c=[:white,:blue],
+	ylabel=L"\pi_{t}",colorbar =:none,yguidefontrotation=-90)
+plot!(y_range, avg_error,subplot=2, xlabel= L"y_{t-1}", ylabel= L"Avg. [E \pi_{t+1} - \pi_{t+1}]",
+	left_margin = 5mm,legend=:false,yguidefontrotation=0)
+plot!(size=(600,400))
+savefig("figures/heatmap_errors_illus_sim.pdf")
 
 
 

@@ -6,14 +6,20 @@ Functions to visualise results
 """
 Function that generates a perfect foresight path from given starting point
 """
-function pf_path(initial_ss; periods = 100)
+function pf_path(initial_ss; periods = 100, lags::Int64 = 1)
 
 	global paths = DataFrame(zeros(periods, len(variables)), variables);
     paths = initialise_df(paths, initial_ss);
 
-    for tt in 3:periods
+    for tt in (lags+1):periods
         #println(tt)
-        inputs = vcat(Array(paths[tt-2,indices.endognames]),Array(paths[tt-1,indices.endognames]));
+		if lags == 1
+			inputs = vcat(Array(paths[tt-1,indices.endognames]))
+		elseif lags == 2
+        	inputs = vcat(Array(paths[tt-2,indices.endognames]),Array(paths[tt-1,indices.endognames]))
+		else
+			display("More than 2 lags not supported")
+		end
         new_values = perfect_foresight(inputs)
         # Populate the paths DataFrame
 		paths[tt,:] = populate(paths[tt,:], indices.endogindex, new_values)::DataFrameRow
@@ -80,15 +86,20 @@ end
 Plot arrows on phase diagram (at arrow_point to arrow_point+1)
 """
 function phase_arrow_plot(paths, vars; arrow_points=[0],
-	h_points = 11:99, v_points = 12:100)
+	h_points = 11:99, v_points = 12:100, label = "", arrow_size = .4,
+	final_arrow = false)
 
 	h_path = paths[h_points,vars[1]]
 	v_path =paths[v_points,vars[2]]
 
-	plt = plot!(h_path,v_path,color = :blue, label = "")
+	if final_arrow
+		plt = plot!(h_path,v_path,color = :blue, arrow = (arrow_size,arrow_size),label = label)
+	else
+		plt = plot!(h_path,v_path,color = :blue, label = label)
+	end
 	for point in arrow_points
 		plot!([h_path[point],h_path[point+1]], [v_path[point],v_path[point+1]],
-			arrow = :closed, color = :blue, label = "")
+			arrow = (arrow_size,arrow_size), color = :blue, label = "")
 	end
 	display(plot!())
 	return plt
