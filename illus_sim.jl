@@ -387,32 +387,36 @@ paths3 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 50,
 	magnitude = -1.5, persistence = par.ρ_y, show_plot = false)
 paths4 = irf(:ϵ_y, lower_stoch, beliefs, shock_period = 5, periods = 50,
 	magnitude = 1.5, persistence = par.ρ_y, show_plot = false)
-plot(paths1.π, label ="Inflation", xlabel = "Periods", legend = :bottomright,ylims = (-3.0,3.0))
-plot!(paths1.y, label ="Output");plot!(paths1.ϵ_y, label ="Shock")
-#savefig("figures/irf1_illus_sim.png")
-plot(paths2.π, label ="Inflation", xlabel = "Periods", legend = false,ylims = (-3.0,3.0))
-plot!(paths2.y, label ="Output");plot!(paths2.ϵ_y, label ="Shock")
-#savefig("figures/irf2_illus_sim.png")
-plot(paths3.π, label ="Inflation", xlabel = "Periods", legend = false,ylims = (-3.0,3.0))
-plot!(paths3.y, label ="Output");plot!(paths3.ϵ_y, label ="Shock")
-#savefig("figures/irf3_illus_sim.png")
-plot(paths4.π, label ="Inflation", xlabel = "Periods", legend = false,ylims = (-3.0,3.0))
-plot!(paths4.y, label ="Output");plot!(paths4.ϵ_y, label ="Shock")
-#savefig("figures/irf4_illus_sim.png")
+plot(paths1.π, label =L"\pi_t", xlabel = "Periods", legend = :bottomright,ylims = (-3.0,3.0))
+plot!(paths1.y, label =L"y_t");plot!(paths1.ϵ_y, label =L"\epsilon_{y,t}")
+plot!(size=(300,200))
+savefig("figures/irf1_illus_sim.pdf")
+plot(paths2.π, label =L"\pi_t", xlabel = "Periods", legend = false,ylims = (-3.0,3.0))
+plot!(paths2.y, label =L"y_t");plot!(paths2.ϵ_y, label =L"\epsilon_{y,t}")
+plot!(size=(300,200))
+savefig("figures/irf2_illus_sim.pdf")
+plot(paths3.π, label =L"\pi_t", xlabel = "Periods", legend = false,ylims = (-3.0,3.0))
+plot!(paths3.y, label =L"y_t");plot!(paths3.ϵ_y, label =L"\epsilon_{y,t}")
+plot!(size=(300,200))
+savefig("figures/irf3_illus_sim.pdf")
+plot(paths4.π, label =L"\pi_t", xlabel = "Periods", legend = false,ylims = (-3.0,3.0))
+plot!(paths4.y, label =L"y_t");plot!(paths4.ϵ_y, label =L"\epsilon_{y,t}")
+plot!(size=(300,200))
+savefig("figures/irf4_illus_sim.pdf")
 
 # All plots together
 irf_plot = plot(layout = (2,2),ylims = (-3.0,3.0),size=(1000,600))
-plot!(paths1.π, label ="Inflation", xlabel = "Periods", legend = :topright, subplot=1)
-plot!(paths1.y, label ="Output");plot!(paths1.ϵ_y, label ="Shock")
-plot!(paths2.π, label ="Inflation", xlabel = "Periods", legend = false, subplot=2)
-plot!(paths2.y, label ="Output", subplot=2);plot!(paths2.ϵ_y, label ="Shock", subplot=2)
-plot!(paths3.π, label ="Inflation", xlabel = "Periods", legend = false, subplot=3)
-plot!(paths3.y, label ="Output", subplot=3);plot!(paths3.ϵ_y, label ="Shock", subplot=3)
-plot!(paths4.π, label ="Inflation", xlabel = "Periods", legend = false, subplot=4)
-plot!(paths4.y, label ="Output", subplot=4);plot!(paths4.ϵ_y, label ="Shock", subplot=4)
-
+plot!(paths1.π, label =L"\pi_t", xlabel = "Periods", legend = :bottomright, subplot=1)
+plot!(paths1.y, label =L"y_t");plot!(paths1.ϵ_y, label =L"\epsilon_{y,t}")
+plot!(paths2.π, label =L"\pi_t", xlabel = "Periods", legend = false, subplot=2)
+plot!(paths2.y, label =L"y_t", subplot=2);plot!(paths2.ϵ_y, label =L"\epsilon_{y,t}", subplot=2)
+plot!(paths3.π, label =L"\pi_t", xlabel = "Periods", legend = false, subplot=3)
+plot!(paths3.y, label =L"y_t", subplot=3);plot!(paths3.ϵ_y, label =L"\epsilon_{y,t}", subplot=3)
+plot!(paths4.π, label =L"\pi_t", xlabel = "Periods", legend = false, subplot=4)
+plot!(paths4.y, label =L"y_t", subplot=4);plot!(paths4.ϵ_y, label =L"\epsilon_{y,t}", subplot=4)
+plot!(size=(600,400))
 display(irf_plot)
-#savefig("figures/irf_illus_sim.png")
+savefig("figures/irfs_illus_sim.pdf")
 
 
 
@@ -459,13 +463,13 @@ for yy in 1:len(y_range)
 	end
 end
 
-using Plots.PlotMeasures
+
 pyplot()
 plot(layout = (2,1), link = :x)
 heatmap!(y_range,π_range,heatmap_mat, subplot=1, c=[:white,:blue],
 	ylabel=L"\pi_{t}",colorbar =:none,yguidefontrotation=-90)
 plot!(y_range, avg_error,subplot=2, xlabel= L"y_{t-1}", ylabel= L"Avg. [E \pi_{t+1} - \pi_{t+1}]",
-	left_margin = 5mm,legend=:false,yguidefontrotation=0)
+	legend=:false,yguidefontrotation=0)
 plot!(size=(600,400))
 savefig("figures/heatmap_errors_illus_sim.pdf")
 

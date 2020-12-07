@@ -172,7 +172,7 @@ function update_beliefs(df::DataFrame, beliefs::Chain, indices::EcoNNetIndices, 
 			end
 		end
 	end
-    display(join(["Weighted forecast error is ", WMSE(inputs, outputs, weights))])
+    display(join(["Weighted forecast error is ", WMSE(inputs, outputs, weights)]))
 
     return beliefs
 end
