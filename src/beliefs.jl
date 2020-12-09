@@ -173,7 +173,7 @@ function learn!(beliefs::Dict, s, tt, options, indices, loss; optim = nothing, s
     inputs = extract_inputs(s,tt-1,indices,options);
     # Outputs are current values first and leads second
 	if len(indices.outputindex_current) > 0
-		outputs = hcat(Vector(s[(tt-1), indices.outputindex_current]),
+		outputs = vcat(Vector(s[(tt-1), indices.outputindex_current]),
         	Vector(s[tt, indices.outputindex_lead]));
 	else
 		outputs = Vector(s[(tt), indices.outputindex_lead]);
