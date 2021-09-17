@@ -21,8 +21,8 @@ function simulate_learning(sim_range::UnitRange{Int64}, s::DataFrame, beliefs::C
             predictions = predict!(inputs, beliefs);
             # For numerical stability at beginning of simulation, bound the expectations
             true_preds[tt,:] = predictions
-            predictions = max.(predictions, -10)
-            predictions = min.(predictions, 10)
+            predictions = max.(predictions, -1000)
+            predictions = min.(predictions, 1000)
         end
 
         # Extract states to feed into step!
