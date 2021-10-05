@@ -4,6 +4,16 @@ Functions to visualise results
 
 
 """
+Turn number into string, replacing decimal points with the letter "p"
+	This is useful for filenames that give some details on parameter values
+"""
+function rep_pnt(num)
+	num_out = replace(string(num), "."=> "p")
+	return num_out
+end
+
+
+"""
 Function that generates a perfect foresight path from given starting point
 """
 function pf_path(initial_ss; periods = 100, lags::Int64 = 1)
