@@ -15,7 +15,7 @@ function simulate_learning(sim_range::UnitRange{Int64}, s::DataFrame, beliefs::C
         # Form expectations
         predictions::Array{Float64,1} = zeros(len(indices.expectnames_all))
         if tt < options.burnin && !options.burnin_use_net
-            predictions = cat(Array(s[tt-1, indices.outputindex_current]), Array(s[tt-1,indices.outputindex_lead]), dims = 1);
+            #predictions = cat(Array(s[tt-1, indices.outputindex_current]), Array(s[tt-1,indices.outputindex_lead]), dims = 1);
         else
             inputs::Array{Float64,1} = extract_inputs(s,tt,indices,options);
             predictions = predict!(inputs, beliefs);
@@ -45,12 +45,20 @@ function simulate_learning(sim_range::UnitRange{Int64}, s::DataFrame, beliefs::C
 
         # Plot the evolution of variables
         if options.show_plots
-            if tt%options.plotting_gap == 0 && tt > (options.plotting_window+1)
-                plot(legend = :bottomleft, xguidefontsize=8)
-                for vv in options.plot_vars
-                    (plot!(s[(tt - options.plotting_window):tt,vv], label = string(vv), legend = :bottomleft,xguidefontsize=8))
+            if tt%options.plotting_gap == 0
+                if tt > (options.plotting_window+1)
+                    plot(legend = :bottomleft, xguidefontsize=8)
+                    for vv in options.plot_vars
+                        (plot!(s[(tt - options.plotting_window):tt,vv], label = string(vv), legend = :bottomleft,xguidefontsize=8))
+                    end
+                    display(plot!(title = ""))
+                else
+                    plot(legend = :bottomleft, xguidefontsize=8)
+                    for vv in options.plot_vars
+                        (plot!(s[(1:options.plotting_window),vv], label = string(vv), legend = :bottomleft,xguidefontsize=8))
+                    end
+                    display(plot!(title = ""))
                 end
-                display(plot!(title = ""))
             end
         end
     end

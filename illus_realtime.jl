@@ -28,7 +28,8 @@ create_gifs = false
     exogenous = [:ϵ_π,:ϵ_y],
     states = [:y_lag, :ϵ_π, :ϵ_y],
 	auxiliary = [:r],
-    N = 50000, num_nodes = 8, activation = relu, window = 400)
+    N = 50000, num_nodes = 8, activation = σ, window = 200)
+	#init_weights = zeros)
 
 @everywhere beliefs = initialise_beliefs(options)
 
@@ -257,11 +258,16 @@ display(equilibrium_conditions_fast(F1,starting_values1, states1, predictions1))
 """
 Initialise beliefs by training on (some of the) steady state(s)
 """
-
+# Change options as required here
+options.window == 400
+options.num_nodes = 8
+options.init_weights = glorot_uniform
+options.max_iter = 10
+options.activation = relu
 @everywhere beliefs = initialise_beliefs(options)
 s = initialise_df(s, ss);
 s = initialise_df(s, central);
-@time beliefs = learn!(beliefs, s, options.N, options, indices, loss,cutoff= false)
+@time beliefs = learn!(beliefs, s, options.N, options, indices, loss, cutoff= false)
 
 
 """
@@ -276,10 +282,11 @@ options.burnin = 1000;
 s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
 options.burnin_use_net = false;
 options.learning_gap = 1;
-options.plotting_gap = 1;
-options.plot_vars = [:π, :y, :Eπ, :Ey]
+options.plotting_gap = 25;
+options.plot_vars = [:π, :y, :Eπ_lead, :Ey]
 
 # Simulate the learning for a set number of periods
+options.burnin:1900
 gr() # Set GR backend for plots as it's the fastest
 @time beliefs,s = simulate_learning(options.burnin:1900, s, beliefs, indices, options)
 
@@ -287,10 +294,14 @@ gr() # Set GR backend for plots as it's the fastest
 pyplot()
 plot_range = (1900-999):(1900)
 plot(layout=(2,1),legend = :topright,  link = :x)
-plot!(s.π[plot_range], subplot = 1, label = L"\pi_t", ylabel = L"\pi_t", yguidefontrotation=-90)
-plot!(s.Eπ[plot_range], subplot = 1, label = L"E \pi_t", linestyle = :dash, yguidefontrotation=-90)
-plot!(s.y[plot_range], subplot = 2, label = L"y_t", ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
-plot!(s.Ey[plot_range], subplot = 2, label = L"Ey_t", linestyle = :dash, yguidefontrotation=-90)
+plot!(s.π[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90,
+	label = false)
+vline!([100], label = false, linestyle = :dash, subplot = 1)
+#plot!(s.Eπ[plot_range], subplot = 1, label = L"E \pi_t", linestyle = :dash, yguidefontrotation=-90)
+plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90,
+	xlabel = "Periods", label = false)
+vline!([100], label = false, linestyle = :dash, subplot = 2)
+#plot!(s.Ey[plot_range], subplot = 2, label = L"Ey_t", linestyle = :dash, yguidefontrotation=-90)
 plot!(size = (600,300))
 savefig("figures/illus_realtime_series.pdf")
 

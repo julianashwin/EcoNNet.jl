@@ -7,7 +7,7 @@ General convention on ordering variables:
 # Import dependencies
 using Distributions, Parameters, LinearAlgebra, QuantEcon, SparseArrays
 using Flux, Distributed, SharedArrays, JLD, NLsolve, ProgressMeter
-using Flux: throttle, params, mse, glorot_uniform, @epochs
+using Flux: throttle, params, mse, glorot_uniform, @epochs, Chain
 using IterTools: ncycle, NCycle
 using NLsolve: SolverResults
 using DataFrames, Random, Atom, Juno, DataFramesMeta

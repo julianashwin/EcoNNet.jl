@@ -150,9 +150,9 @@ function extract_inputs(s::DataFrame, tt_range::Int64, indices::EcoNNetIndices, 
 		inputs = cat(Vector(s[(tt_range-1), indices.infoindex_lagged]),
 			Vector(s[(tt_range), indices.infoindex_current]), dims = 1)
 	elseif len(indices.infoindex_lagged) > 0
-		inputs = Vector(s[(tt_range-1), indices.stateindex_lagged]);
+		inputs = Vector(s[(tt_range-1), indices.infoindex_lagged]);
 	elseif len(indices.infoindex_current) > 0
-		inputs = Vector(s[(tt_range), indices.stateindex_current]);
+		inputs = Vector(s[(tt_range), indices.infoindex_current]);
 	else
 		display(println("Need to specify some states"))
 	end

@@ -46,6 +46,7 @@ Define the parameters as a Named Tuple.
 State the equilibrium conditions of the model as a function which returns
     a vector of zeros
 """
+
 @everywhere function equilibrium_conditions_fast(F::Array{Float64,1},
     x::Array{Float64,1},states_input::Array{Float64,1},predictions_input::Array{Float64,1})
     # Manually unpack the states
@@ -333,7 +334,7 @@ for start in starts
 end
 if save_figs
 	plot!(size = (600,400))
-	savefig("figures/phase_illus_rls_sim.pdf")
+	savefig("figures/phase_illus_rls_sim_full.pdf")
 end
 
 if create_gifs
@@ -506,11 +507,11 @@ pyplot()
 plot(layout = (2,1), link = :x)
 heatmap!(y_range,π_range,heatmap_mat, subplot=1, c=[:white,:blue],
 	ylabel=L"\pi_{t}",colorbar =:none,yguidefontrotation=-90)
-bar!(y_range, avg_error,subplot=2, xlabel= L"y_{t-1}", ylabel= L"Avg. [E \pi_{t+1} - \pi_{t+1}]",
+plot!(y_range, avg_error,subplot=2, xlabel= L"y_{t-1}", ylabel= L"Avg. [E \pi_{t+1} - \pi_{t+1}]",
 	legend=:false,yguidefontrotation=0)
 if save_figs
 	plot!(size=(600,400))
-	savefig("figures/heatmap_errors_illus_rls_sim.pdf")
+	savefig("figures/heatmap_errors_illus_rls_sim_full.pdf")
 end
 
 
