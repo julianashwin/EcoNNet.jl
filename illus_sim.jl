@@ -4,7 +4,7 @@ cd("/Users/julianashwin/Documents/GitHub/EcoNNet.jl")
 Add extra cores if you want to parallelise later
 """
 
-using LaTeXStrings, TableView
+using LaTeXStrings, TableView, CSV
 using Distributed
 #addprocs(2)
 #rmprocs(2)
@@ -277,7 +277,7 @@ options.plot_vars = [:π, :y, :Eπ, :Ey]
 # Simulate the learning for a set number of periods
 gr() # Set GR backend for plots as it's the fastest
 s[100000:200000,:]= s[400000:options.N,:]
-@time beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
+@time beliefs,s = simulate_learning(200000:options.N, s, beliefs, indices, options)
 
 # Plot simulated time series
 pyplot()
@@ -287,6 +287,13 @@ plot!(s.π[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
 plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
 plot!(size = (600,300))
 savefig("figures/illus_sim_series.pdf")
+
+export_df = s[options.N-99999:options.N,:]
+rename!(export_df, replace.(names(export_df), "π" => "pi"))
+rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
+export_df.r = par.ϕ_π.*export_df.pi .+ par.α_3.*export_df.pi.^3
+
+CSV.write("estimation/illustrative/illus_sim.csv", export_df)
 
 
 """

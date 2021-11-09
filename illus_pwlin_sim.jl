@@ -4,7 +4,7 @@ cd("/Users/julianashwin/Documents/GitHub/EcoNNet.jl")
 Add extra cores if you want to parallelise later
 """
 
-using LaTeXStrings, TableView
+using LaTeXStrings, TableView, CSV
 using Distributed
 #addprocs(2)
 #rmprocs(2)
@@ -26,7 +26,7 @@ leads and lags are specified as a `_lead` or `_lag` suffix
     exogenous = [:ϵ_π,:ϵ_y],
     states = [:y_lag, :ϵ_π, :ϵ_y],
 	auxiliary = [:r],
-    N = 500000, num_nodes = 32, activation = σ, window = 40000,
+    N = 500000, num_nodes = 32, activation = relu, window = 40000,
 	burnin = 50000, learning_gap = 10000, plotting_gap = 10000)
 
 @everywhere beliefs = initialise_beliefs(options)
@@ -43,6 +43,7 @@ Define the parameters as a Named Tuple.
 State the equilibrium conditions of the model as a function which returns
     a vector of zeros
 """
+
 @everywhere function equilibrium_conditions_fast(F::Array{Float64,1},
     x::Array{Float64,1},states_input::Array{Float64,1},predictions_input::Array{Float64,1})
     # Manually unpack the states
@@ -289,6 +290,15 @@ savefig("figures/pw_linear/sim_series_pistar"*rep_pnt(par.π_star)*
 	"_alpha"*rep_pnt(par.α)*".pdf")
 
 
+export_df = s[options.N-99999:options.N,:]
+rename!(export_df, replace.(names(export_df), "π" => "pi"))
+rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
+export_df.r = Taylor_condition.(export_df.pi)
+export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r]]
+
+CSV.write("estimation/pwlin/pwlin_sim_pistar"*rep_pnt(par.π_star)*".csv",
+	export_df)
+
 """
 Plot phase diagram
 """
@@ -391,6 +401,18 @@ plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xla
 plot!(size = (600,300))
 savefig("figures/pw_linear/sim_series_pistar"*rep_pnt(par.π_star)*
 	"_alpha"*rep_pnt(par.α)*".pdf")
+
+
+
+export_df = s[options.N-99999:options.N,:]
+rename!(export_df, replace.(names(export_df), "π" => "pi"))
+rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
+export_df.r = Taylor_condition.(export_df.pi)
+export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r]]
+
+CSV.write("estimation/pwlin/pwlin_sim_pistar"*rep_pnt(par.π_star)*".csv",
+	export_df)
+
 
 """
 Plot phase diagram

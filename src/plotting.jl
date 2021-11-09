@@ -22,7 +22,7 @@ function pf_path(initial_ss; periods = 100, lags::Int64 = 1)
     paths = initialise_df(paths, initial_ss);
 
     for tt in (lags+1):periods
-        #println(tt)
+        #print(tt)
 		if lags == 1
 			inputs = vcat(Array(paths[tt-1,indices.endognames]))
 		elseif lags == 2
@@ -78,9 +78,9 @@ function irf(type, initial_ss, beliefs::Chain; periods = 100, magnitude = 1.0, p
 		end
 		for vv in 1:len(plot_vars)
 			if vv < len(plot_vars)
-				plot!(paths[:,plot_vars[vv]], label = plot_vars[vv])
+				plot!(paths[:,plot_vars[vv]], label = string(plot_vars[vv]))
 			else
-				display(plot!(paths[:,plot_vars[vv]], label = plot_vars[vv]))
+				display(plot!(paths[:,plot_vars[vv]], label = string(plot_vars[vv])))
 			end
 		end
 	end

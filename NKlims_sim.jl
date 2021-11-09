@@ -12,13 +12,12 @@ Expectations are denoted by a capital E prefix,
 leads and lags are specified as a `_lead` or `_lag` suffix
 """
 
-@everywhere options = EcoNNetOptions(infoset = [:π_lag, :y_lag, :ϵ_π, :ϵ_y],
+@everywhere options = EcoNNetOptions(infoset = [:π_lag, :y_lag, :r_lag, :ϵ_π, :ϵ_y],
     expectations = [:Eπ,:Ey,:Eπ_lead, :Ey_lead],
-    endogenous = [:π, :y],
+    endogenous = [:π, :y, :r],
     exogenous = [:ϵ_π,:ϵ_y],
-    states = [:π_lag, :y_lag, :ϵ_π, :ϵ_y],
-	auxiliary = [:r],
-    N = 500000, num_nodes = 24, activation = σ, window = 40000)
+    states = [:π_lag, :y_lag, :r_lag, :ϵ_π, :ϵ_y],
+    N = 500000, num_nodes = 32, activation = relu, window = 40000)
 
 @everywhere beliefs = initialise_beliefs(options)
 
@@ -41,8 +40,9 @@ State the equilibrium conditions of the model as a function which returns
     # Manually unpack the states
     π_lag::Float64 = states_input[1]
     y_lag::Float64 = states_input[2]
-    ϵ_π::Float64 = states_input[3]
-	ϵ_y::Float64 = states_input[4]
+	r_lag::Float64 = states_input[3]
+    ϵ_π::Float64 = states_input[4]
+	ϵ_y::Float64 = states_input[5]
     # and the predictions
     #Ep::Float64 = predictions_input[1]
     #Ey::Float64 = predictions_input[2]
@@ -51,12 +51,13 @@ State the equilibrium conditions of the model as a function which returns
     # and the endogenous variables
     π::Float64 = x[1]
     y::Float64 = x[2]
+	r::Float64 = x[3]
 
     # p[t] = ϕ_pp*pe[t+1] + ϕ_py*y[t] + α_2*y[t]^2 - α_3*y[t]^3 + ϵ_p[t]
-    F[1] =  max(par.β*Eπ_lead + par.κ*y,par.π_lim)  + ϵ_π - π ::Float64
+    F[1] =  max(par.β*Eπ_lead + par.κ*y, par.π_lim)  + ϵ_π - π ::Float64
     # y[t] = η*y[t-1] + ϕ_yp*p[t] + ϵ_y[t]
-	r = max(par.ϕ_π*π + par.ϕ_y*y, par.R_lim)
-    F[2] = max((1-par.η)*Ey_lead + par.η*y_lag - par.σ*(r - Eπ_lead) , par.y_lim)+ ϵ_y - y ::Float64
+	F[3] = r - max(par.ϕ_π*π + par.ϕ_y*y, par.R_lim)
+    F[2] = max((1-par.η)*Ey_lead + par.η*y_lag - par.σ*(r - Eπ_lead), par.y_lim)+ ϵ_y - y ::Float64
 
     return F
 end
@@ -68,11 +69,13 @@ Define equations of motion under perfect foresight as a useful comparison
 """
 function perfect_foresight(inputs)
     # Manually unpack the states (endogenous variables in same order as in options)
-	# Lagged state variables first, then current condogenous
+	# Lagged state variables first, then current endogenous
     π_lag = max(inputs[1], par.π_lim)
     y_lag = max(inputs[2], par.y_lim)
-	π_t = max(inputs[3], par.π_lim)
-	y_t = max(inputs[4], par.y_lim)
+	r_lag = max(inputs[3], par.R_lim)
+	π_t = max(inputs[4], par.π_lim)
+	y_t = max(inputs[5], par.y_lim)
+	r_t = max(inputs[6], par.R_lim)
 
 
 
@@ -83,11 +86,13 @@ function perfect_foresight(inputs)
 	y_new = (1/(1-par.η))*(y_t - par.η*y_lag + par.σ*(
 		r_t - π_new))
 	y_new = max(y_new,par.y_lim)
+	r_new = max(par.ϕ_π*π_new + par.ϕ_y*y_new, par.R_lim)
 	# Impose upper and lower bounds to allow plotting
 	π_new = min(π_new,max(π_new,-1e6),1e6)
 	y_new = min(y_new,max(y_new,-1e6),1e6)
+	r_new = min(r_t,max(r_t,-1e6),1e6)
 
-    outputs = [π_new,y_new]
+    outputs = [π_new, y_new, r_new]
 
 end
 
@@ -111,9 +116,11 @@ Calculate steady states
 function steady_states(F::Array{Float64,1},x::Array{Float64,1})
     π::Float64 = x[1]
     y::Float64 = x[2]
+	r::Float64 = x[3]
     F[1]::Float64 = max(par.β*π + par.κ*y,par.π_lim) - π
     F[2]::Float64 = max((1-par.η)*y + par.η*y - par.σ*(
 		max(par.ϕ_π*π + par.ϕ_y*y, par.R_lim) - π),par.y_lim) - y
+	F[3]::Float64 = max(par.ϕ_π*π + par.ϕ_y*y, par.R_lim) - r
     return F
 end
 
@@ -122,22 +129,25 @@ ss = Dict{Symbol,Float64}()
 ss[:ϵ_π] = 0.0
 ss[:ϵ_y] = 0.0
 # upper steady state
-sstates = nlsolve(steady_states, [2.0, 2.0])
+sstates = nlsolve(steady_states, [2.0, 2.0, 2.0])
 upper = Dict{Symbol,Float64}();
 upper[:π] = sstates.zero[1];
 upper[:y] = sstates.zero[2];
+upper[:r] = sstates.zero[3];
 upper[:Eπ_lead] = upper[:π];
 # central steady state
-sstates = nlsolve(steady_states, [-0.02, -0.02])
+sstates = nlsolve(steady_states, [-0.02, -0.02, -0.02])
 central = Dict{Symbol,Float64}();
 central[:π] = sstates.zero[1];
 central[:y] = sstates.zero[2];
+central[:r] = sstates.zero[3];
 central[:Eπ_lead] = central[:π];
 # lower steady state
 lower = Dict{Symbol,Float64}();
-sstates = nlsolve(steady_states, [-2.0, -2.0])
+sstates = nlsolve(steady_states, [-2.0, -2.0, -2.0])
 lower[:π] = sstates.zero[1];
 lower[:y] = sstates.zero[2];
+lower[:r] = sstates.zero[3];
 lower[:Eπ_lead] = lower[:π];
 
 s = initialise_df(s, upper);
@@ -166,10 +176,10 @@ end
 EE_kink = par.R_lim*(1-par.ϕ_π)/(par.ϕ_π*par.ϕ_y+(1-par.ϕ_π)*par.ϕ_y)
 
 ## Steady state conditions
-gr()
+pyplot()
 plot_points = -1:0.001:1
-ss_plot = plot(xlabel = "Output", xlims = (-0.07,0.07),
-    ylabel = "Inflation", ylims = (-0.07, 0.07),legend=:topright)
+ss_plot = plot(xlabel = L"y_t", xlims = (-0.07,0.07),
+    ylabel = L"\pi_t", ylims = (-0.07, 0.07),legend=:topright)
 plot!(plot_points, ZLB_bind_condition.(plot_points),
 	fillrange=[minimum(plot_points)*ones(len(plot_points))], fillalpha = 0.5,
 	 color = :paleturquoise1, label = "ZLB")
@@ -183,9 +193,10 @@ plot!([par.y_lim,par.y_lim],[par.R_lim,-0.07],
 display(ss_plot)
 
 ## Plot perfect foresight paths
+pyplot()
 phase_plot = ss_plot
 initial_ss = deepcopy(central)
-starts = [(π=0.003,y=0.003,periods=5,arrows=[4]),
+starts = [(π=0.003,y=0.003, periods=5,arrows=[4]),
 	(π=-0.003,y=-0.003,periods=5,arrows=[4]),
 	(π=0.01,y=-0.003,periods=7,arrows=[6]),
 	(π=-0.01,y=0.003,periods=7,arrows=[6]),
@@ -196,8 +207,9 @@ starts = [(π=0.003,y=0.003,periods=5,arrows=[4]),
 	(π=-0.015,y=0.005,periods=6,arrows=[5]),
 	(π=-0.0175,y=0.005,periods=6,arrows=[5])]
 for start in starts
+	print(start)
 	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths1 = pf_path(initial_ss, periods = start[:periods])
+	paths1 = pf_path(initial_ss, periods = start[:periods], lags = 2)
 	phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:start[:periods],
 		v_points = 1:start[:periods])
 end
@@ -233,23 +245,26 @@ s = initialise_df(s, lower, gap = 500, steadystate_alt = upper)
 """
 Run learning simulation
 """
-noise_y = par.σ_y*randn(options.N) + alternating_shocks(options.N, gap=200, mag = 0.03)
-s.ϵ_y = simulate_ar(par.ρ_y, par.σ_y, options.N, noise_y)
-s.ϵ_π = simulate_ar(par.ρ_π, par.σ_π, options.N, Normal())
+noise_y = par.σ_y*randn(options.N) + alternating_shocks(options.N, gap=200, mag = 0.02)
+s.ϵ_y = simulate_ar(par.ρ_y, 0.0025, options.N, noise_y)
+s.ϵ_π = simulate_ar(par.ρ_π, 0.002, options.N, Normal())
 plot(s.ϵ_y[1:2000])
 plot(s.ϵ_π[1:2000])
 options.burnin = 50000;
 s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], lower, gap = 500, steadystate_alt = upper);
 s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
 options.burnin_use_net = false;
-options.learning_gap = 500;
+options.learning_gap = 50000;
 options.plotting_gap = 500;
-options.plot_vars = [:π, :y, :Eπ, :Ey]
+options.window = 49999;
+options.plot_vars = [:π, :y, :r, :Eπ, :Ey]
 
 # Simulate the learning for a set number of periods
 gr() # Set GR backend for plots as it's the fastest
-#s[300000:400000,:]= s[400000:options.N,:]
-@time beliefs,s = simulate_learning(options.burnin:options.burnin+50000, s, beliefs, indices, options)
+s[1:options.burnin,:]= s[(options.N - options.burnin + 1):options.N,:]
+s.ϵ_π[(options.burnin+1):options.N] = simulate_ar(par.ρ_π, par.σ_π, options.N - options.burnin, noise_π)
+s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
+@time beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
 
 # Plot simulated time series
 gr()
@@ -281,10 +296,11 @@ lower_stoch[:π] = paths.π[1000];
 lower_stoch[:Eπ_lead] = paths.Eπ_lead[1000];
 lower_stoch[:y] = paths.y[1000];
 
+pyplot()
 paths1 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
 	magnitude = -0.0, persistence = par.ρ_y, show_plot = true,plot_vars=[:y,:π])
-paths2 = irf(:ϵ_y, lower_stoch, beliefs, shock_period = 5, periods = 100,
-	magnitude = -0.01, persistence = par.ρ_y, show_plot = true,
+paths2 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
+	magnitude = -0.03, persistence = par.ρ_y, show_plot = true,
 	plot_vars=[:y,:π,:Ey, :Eπ])
 
 
@@ -330,7 +346,7 @@ Plot phase diagram
 """
 
 
-gr()
+pyplot()
 plot_points = -1:0.001:1
 ss_plot = plot(xlabel = "Output", xlims = (-0.07,0.07),
     ylabel = "Inflation", ylims = (-0.07, 0.07),legend=:topright)
@@ -351,10 +367,10 @@ phase_plot = ss_plot
 initial_ss = deepcopy(central)
 starts = [(π=-0.04,y=-0.06,ϵ_y=-0.0,periods=2,arrows=[1]),
 	(π=-0.04,y=-0.018,ϵ_y=0.0,periods=43,arrows=[27,32]),
-	(π=-0.04,y=-0.016,ϵ_y=0.0,periods=43,arrows=[]),
+	(π=-0.04,y=-0.005,ϵ_y=0.0,periods=43,arrows=[]),
 	(π=0.035,y=0.02,ϵ_y=0.0,periods=12,arrows=[6]),
 	(π=0.0,y=-0.039,ϵ_y=0.0,periods=60,arrows=[58]),
-	(π=0.0,y=-0.037,ϵ_y=0.0,periods=100,arrows=[18,90]),
+	(π=0.0,y=-0.015,ϵ_y=0.0,periods=100,arrows=[18,90]),
 	(π=-0.0175,y=0.05,ϵ_y=0.0,periods=60,arrows=[35])
 	]
 for start in starts
