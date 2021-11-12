@@ -189,46 +189,46 @@ end
 plot!(size = (600,400))
 savefig("figures/phase_illus_perf.pdf")
 
+if false
+	starts = [(π=0.75,y=-1.5,periods=100,arrows=[10,60]),
+		(π=-0.75,y=1.5,periods=100,arrows=[10,60]),
+		(π=0.0,y=-1.5,periods=100,arrows=[10,60]),
+		(π=0.0,y=1.5,periods=100,arrows=[10,60]),
+		(π=-1.024,y=-3.0,periods=80,arrows=[10,55]),
+		(π=-2.350785,y=-3.0,periods=60,arrows=[25]),
+		(π=1.024,y=3.0,periods=80,arrows=[10,55]),
+		(π=2.350785,y=3.0,periods=60,arrows=[25])]
 
-starts = [(π=0.75,y=-1.5,periods=100,arrows=[10,60]),
-	(π=-0.75,y=1.5,periods=100,arrows=[10,60]),
-	(π=0.0,y=-1.5,periods=100,arrows=[10,60]),
-	(π=0.0,y=1.5,periods=100,arrows=[10,60]),
-	(π=-1.024,y=-3.0,periods=80,arrows=[10,55]),
-	(π=-2.350785,y=-3.0,periods=60,arrows=[25]),
-	(π=1.024,y=3.0,periods=80,arrows=[10,55]),
-	(π=2.350785,y=3.0,periods=60,arrows=[25])]
+	periods = 100
 
-periods = 100
-
-anim = @animate for tt in 2:periods
-	plot_ss(plot_points)
-	plot!(size = (600,400))
-	for start in starts
-		initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-		paths1 = pf_path(initial_ss, periods = periods)
+	anim = @animate for tt in 2:periods
+		plot_ss(plot_points)
+		plot!(size = (600,400))
+		for start in starts
+			initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
+			paths1 = pf_path(initial_ss, periods = periods)
 
 
-		if start == starts[1]
-			phase_arrow_plot(paths1, [:y,:π], arrow_points=[], h_points = 2:min(start[:periods], tt),
-				v_points = 1:(min(start[:periods], tt)-1), label = "Perfect foresight paths", arrow_size = .5)
-			if tt >=3
-				phase_arrow_plot(paths1, [:y,:π], arrow_points=[min(start[:periods], tt)-2], h_points = 2:min(start[:periods], tt),
+			if start == starts[1]
+				phase_arrow_plot(paths1, [:y,:π], arrow_points=[], h_points = 2:min(start[:periods], tt),
+					v_points = 1:(min(start[:periods], tt)-1), label = "Perfect foresight paths", arrow_size = .5)
+				if tt >=3
+					phase_arrow_plot(paths1, [:y,:π], arrow_points=[min(start[:periods], tt)-2], h_points = 2:min(start[:periods], tt),
+						v_points = 1:(min(start[:periods], tt)-1), label = "", arrow_size = .5)
+				end
+			else
+				phase_arrow_plot(paths1, [:y,:π], arrow_points=[], h_points = 2:min(start[:periods], tt),
 					v_points = 1:(min(start[:periods], tt)-1), label = "", arrow_size = .5)
-			end
-		else
-			phase_arrow_plot(paths1, [:y,:π], arrow_points=[], h_points = 2:min(start[:periods], tt),
-				v_points = 1:(min(start[:periods], tt)-1), label = "", arrow_size = .5)
-			if tt >=3
-				phase_arrow_plot(paths1, [:y,:π], arrow_points=[min(start[:periods], tt)-2], h_points = 2:min(start[:periods], tt),
-					v_points = 1:(min(start[:periods], tt)-1), label = "", arrow_size = .5)
+				if tt >=3
+					phase_arrow_plot(paths1, [:y,:π], arrow_points=[min(start[:periods], tt)-2], h_points = 2:min(start[:periods], tt),
+						v_points = 1:(min(start[:periods], tt)-1), label = "", arrow_size = .5)
+				end
 			end
 		end
+
 	end
-
+	gif(anim, "figures/phase_illus_perf.gif", fps = 15)
 end
-gif(anim, "figures/phase_illus_perf.gif", fps = 15)
-
 
 
 """
@@ -270,14 +270,19 @@ options.burnin = 50000;
 s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], lower, gap = 500, steadystate_alt = upper);
 s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
 options.burnin_use_net = false;
-options.learning_gap = 500;
-options.plotting_gap = 500;
+options.window = 49999;
+options.learning_gap = 50000;
+options.plotting_gap = 50000;
 options.plot_vars = [:π, :y, :Eπ, :Ey]
 
 # Simulate the learning for a set number of periods
+noise_π = par.σ_π*randn((options.N - options.burnin))
+noise_y = par.σ_y*randn((options.N - options.burnin))
 gr() # Set GR backend for plots as it's the fastest
-s[100000:200000,:]= s[400000:options.N,:]
-@time beliefs,s = simulate_learning(200000:options.N, s, beliefs, indices, options)
+s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:]
+s.ϵ_π[(options.burnin+1):options.N] = simulate_ar(par.ρ_π, par.σ_π, options.N - options.burnin, noise_π)
+s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
+@time beliefs,s = simulate_learning((options.burnin+1):options.N, s, beliefs, indices, options)
 
 # Plot simulated time series
 pyplot()
@@ -300,12 +305,13 @@ CSV.write("estimation/illustrative/illus_sim.csv", export_df)
 Plot phase diagram
 """
 
+pyplot()
 plot_ss(plot_points)
 initial_ss = deepcopy(central)
 starts = [(π=3.0,y=3.0,periods=100,arrows=[10]),
 	(π=-3.,y=-3.,periods=100,arrows=[10]),
 	(π=-0.008,y=-0.008,periods=100,arrows=[42, 65]),
-	(π=-0.03,y=-0.03,periods=100,arrows=[42, 65]),
+	(π=-0.05,y=-0.05,periods=100,arrows=[42, 65]),
 	#(π=1.0,y=1.0,periods=100,arrows=[9]),
 	#(π=-1.0,y=1.0,periods=100,arrows=[9]),
 	#(π=1.0,y=-1.0,periods=100,arrows=[9]),

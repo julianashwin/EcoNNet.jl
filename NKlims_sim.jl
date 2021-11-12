@@ -246,8 +246,8 @@ s = initialise_df(s, lower, gap = 500, steadystate_alt = upper)
 Run learning simulation
 """
 noise_y = par.σ_y*randn(options.N) + alternating_shocks(options.N, gap=200, mag = 0.02)
-s.ϵ_y = simulate_ar(par.ρ_y, 0.0025, options.N, noise_y)
-s.ϵ_π = simulate_ar(par.ρ_π, 0.002, options.N, Normal())
+s.ϵ_y = simulate_ar(par.ρ_y, 0.004, options.N, noise_y)
+s.ϵ_π = simulate_ar(par.ρ_π, 0.004, options.N, Normal())
 plot(s.ϵ_y[1:2000])
 plot(s.ϵ_π[1:2000])
 options.burnin = 50000;
@@ -262,8 +262,6 @@ options.plot_vars = [:π, :y, :r, :Eπ, :Ey]
 # Simulate the learning for a set number of periods
 gr() # Set GR backend for plots as it's the fastest
 s[1:options.burnin,:]= s[(options.N - options.burnin + 1):options.N,:]
-s.ϵ_π[(options.burnin+1):options.N] = simulate_ar(par.ρ_π, par.σ_π, options.N - options.burnin, noise_π)
-s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
 @time beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
 
 # Plot simulated time series

@@ -268,6 +268,7 @@ s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
 options.burnin_use_net = false;
 options.learning_gap = 50000;
 options.plotting_gap = 50000;
+options.window = 49999;
 options.plot_vars = [:π, :y, :Eπ, :Ey]
 
 # Simulate the learning for a set number of periods
@@ -531,6 +532,17 @@ plot!(size = (600,300))
 savefig("figures/pw_linear/sim_series_pistar"*rep_pnt(par.π_star)*
 	"_alpha"*rep_pnt(par.α)*".pdf")
 
+ 
+export_df = s[options.N-99999:options.N,:]
+rename!(export_df, replace.(names(export_df), "π" => "pi"))
+rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
+export_df.r = Taylor_condition.(export_df.pi)
+export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r]]
+
+CSV.write("estimation/pwlin/pwlin_sim_pistar"*rep_pnt(par.π_star)*".csv",
+	export_df)
+
+
 """
 Plot phase diagram
 """
@@ -542,7 +554,7 @@ periods = 5000
 starts = [(π=3.0,y=3.0,periods=periods,arrows=[10,periods-4900]),
 	(π=-3.,y=-3.,periods=periods,arrows=[10,periods-4900]),
 	(π=0.2,y=0.2,periods=periods,arrows=[102,periods-2500]),
-	(π=-0.2,y=-0.2,periods=periods,arrows=[102,periods-4600]),
+	(π=-0.3,y=-0.3,periods=periods,arrows=[102,periods-4600]),
 	#(π=1.0,y=1.0,periods=100,arrows=[9]),
 	#(π=-1.0,y=1.0,periods=100,arrows=[9]),
 	#(π=1.0,y=-1.0,periods=100,arrows=[9]),
@@ -583,11 +595,11 @@ savefig("figures/pw_linear/phase_nnet_pistar"*rep_pnt(par.π_star)*
 
 
 """
-Larger π_star 2.0
+Larger π_star 1.5
 """
 
 @everywhere par = (β = 0.95, κ = 0.05, η = 0.95, σ = 0.25,
-	ϕ_π = 0.5, π_star = 2.0, α = 0.75,
+	ϕ_π = 0.5, π_star = 1.5, α = 0.75,
 	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.5, σ_π = 0.2);
 
 """
@@ -596,12 +608,12 @@ Perfect foresight phase
 plot_points = -6.0:0.01:6.0;
 plot_ss(plot_points)
 initial_ss = deepcopy(central)
-starts = [(π=-4.25,y=-5.5,periods=100,arrows=[10,50,98]),
-	(π=4.25,y=5.5,periods=100,arrows=[10,50,98]),
-	(π=-2.6,y=-5.5,periods=200,arrows=[10,50,198]),
-	(π=2.6,y=5.5,periods=200,arrows=[10,50,198]),
-	(π=-1.7,y=-5.5,periods=100,arrows=[10,50,98]),
-	(π=1.7,y=5.5,periods=100,arrows=[10,50,98])
+starts = [(π=-4.0,y=-5.5,periods=100,arrows=[10,50,98]),
+	(π=4.0,y=5.5,periods=100,arrows=[10,50,98]),
+	(π=-3.25,y=-5.5,periods=200,arrows=[10,50,198]),
+	(π=3.25,y=5.5,periods=200,arrows=[10,50,198]),
+	(π=-2.5,y=-5.5,periods=100,arrows=[10,50,98]),
+	(π=2.5,y=5.5,periods=100,arrows=[10,50,98])
 	]
 for start in starts
 	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
@@ -643,6 +655,17 @@ plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xla
 plot!(size = (600,300))
 savefig("figures/pw_linear/sim_series_pistar"*rep_pnt(par.π_star)*
 	"_alpha"*rep_pnt(par.α)*".pdf")
+
+# Export the data
+export_df = s[options.N-99999:options.N,:]
+rename!(export_df, replace.(names(export_df), "π" => "pi"))
+rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
+export_df.r = Taylor_condition.(export_df.pi)
+export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r]]
+
+CSV.write("estimation/pwlin/pwlin_sim_pistar"*rep_pnt(par.π_star)*".csv",
+	export_df)
+
 
 """
 Plot phase diagram

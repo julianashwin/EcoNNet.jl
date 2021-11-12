@@ -54,15 +54,15 @@ end;
 varobs y pi;
 
 estimated_params;
-beta, 0.95,-3,3, normal_pdf, 1, 1,,;
+//lsebeta, 0.95,-3,3, normal_pdf, 1, 1,,;
 kappa, 0.05,-3,3, normal_pdf, 0, 1,,;
 eta, 0.95,-3,3, normal_pdf, 1, 1,,;
-sigma, 0.25,-3,3, normal_pdf, 0, 1,,;
+//sigma, 0.25,-3,3, normal_pdf, 0, 1,,;
 phi_pi, 0.5,0,5, normal_pdf, 2, 1,,;
-//rho_d, 0,,, normal_pdf, 0, 0.5,,;
-//rho_s, 0,,, normal_pdf, 0, 0.5,,;
+rho_pi, 0,,, normal_pdf, 0, 0.5,,;
+rho_y, 0,,, normal_pdf, 0, 0.5,,;
 
-//stderr nu_pi, 0.2, 0, 3, inv_gamma_pdf, 0.5, 2;
+stderr nu_pi, 0.2, 0, 3, inv_gamma_pdf, 0.5, 2;
 stderr nu_y, 0.2, 0, 3, inv_gamma_pdf, 0.5, 2;
 stderr sunspot, 0.5, 0, 3, inv_gamma_pdf, 0.5, 2;
 //corr nu_pi, nu_y,0,-1,1, normal_pdf, 0, 1;
@@ -73,5 +73,5 @@ end;
 
 
 estimation(datafile=illus_learning_sim,
-first_obs = 99000, mode_compute=6, mh_replic = 5000,
+first_obs = 1, nobs = 1000, mode_compute=6, mh_replic = 5000,
 mh_jscale = 2, order = 1) y pi ;
