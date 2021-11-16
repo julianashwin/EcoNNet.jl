@@ -38,6 +38,18 @@ Define the parameters as a Named Tuple.
     α_2 = 0.0, α_3 = 0.075,
 	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.5, σ_π = 0.2);
 
+@everywhere par = (β = 0.95, κ = 0.05,
+	η = 0.95, σ = 0.25, ϕ_π = 1.5,
+    α_2 = 0.0, α_3 = 0.0,
+	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.5, σ_π = 0.2);
+
+
+@everywhere par = (β = 1.051, κ = -0.0258,
+	η = 0.8505, σ = 0.3879, ϕ_π = 0.5326,
+    α_2 = 0.0, α_3 = 0.0,
+	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.5, σ_π = 0.2);
+
+
 """
 State the equilibrium conditions of the model as a function which returns
     a vector of zeros
@@ -77,15 +89,15 @@ function perfect_foresight(inputs)
     y_lag = inputs[2]
     # and the predictions
     # π[t+1] = 1/β*(π[t] - κ*y[t])
-    π = (1/par.β)*(π_lag - par.κ*y_lag)
+    πt = (1/par.β)*(π_lag - par.κ*y_lag)
     # y[t+1] = η*y[t] - σ*(ϕ_π*π[t+1] + α π[t+1]^3 - π[t+2])
 	y = (par.β/(par.β+par.σ*par.κ))*(
-		par.η*y_lag - par.σ*(((par.ϕ_π*par.β-1)/par.β)*π + par.α_3*π^3))
+		par.η*y_lag - par.σ*(((par.ϕ_π*par.β-1)/par.β)*πt + par.α_3*πt^3))
 	# Impose upper and lower bounds to allow plotting
-	π = min(π,max(π,-1e6),1e6)
-	y = min(y,max(y,-1e6),1e6)
+	πt = min(πt,max(πt,-1e100),1e100)
+	y = min(y,max(y,-1e100),1e100)
 
-    outputs = [π,y]
+    outputs = [πt,y]
 
 end
 
@@ -151,6 +163,17 @@ s = initialise_df(s, lower, gap = 2, steadystate_alt = upper)
 """
 Plot steady state conditions and perfect foresight paths
 """
+
+@everywhere par = (β = 1.06, κ = -0.03,
+	η = 0.85, σ = 0.41, ϕ_π = 0.55,
+    α_2 = 0.0, α_3 = 0.0,
+	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.5, σ_π = 0.2);
+
+@everywhere par = (β = 0.0882, κ = 0.6971,
+	η = 0.9390, σ = 0.1335, ϕ_π = 0.5754,
+    α_2 = 0.0, α_3 = 0.0,
+	ρ_y = 0.4933, σ_y = 0.1983, ρ_π = 0.5981, σ_π = 0.3806);
+
 #using Plotly, PlotlyJS
 pyplot()
 plot_points = -4.0:0.01:4.0;
@@ -164,46 +187,51 @@ function plot_ss(plot_points)
 end
 
 #for tt in 1:50
-plot_ss(plot_points)
-initial_ss = deepcopy(central)
 starts = [(π=0.75,y=-1.5,periods=100,arrows=[10,60]),
 	(π=-0.75,y=1.5,periods=100,arrows=[10,60]),
-	(π=0.0,y=-1.5,periods=62,arrows=[10,60]),
-	(π=0.0,y=1.5,periods=62,arrows=[10,60]),
-	(π=-1.024,y=-3.0,periods=100,arrows=[10,55]),
-	(π=-2.350785,y=-3.0,periods=70,arrows=[25]),
-	(π=1.024,y=3.0,periods=100,arrows=[10,55]),
-	(π=2.350785,y=3.0,periods=70,arrows=[25])]
+	(π=0.0,y=-1.5,periods=100,arrows=[10,60]),
+	(π=0.0,y=1.5,periods=100,arrows=[10,60]),
+	(π=-1.024,y=-3.0,periods=80,arrows=[10,55]),
+	(π=-2.350785,y=-3.0,periods=60,arrows=[25]),
+	(π=1.024,y=3.0,periods=80,arrows=[10,55]),
+	(π=2.350785,y=3.0,periods=60,arrows=[25])]
+plot_ss(plot_points)
+initial_ss = deepcopy(central)
+starts = [
+(π=2.2,y=3.0,periods=3,arrows=[2]),
+(π=0.74,y=1.0,periods=3,arrows=[2]),
+(π=2.3,y=3.0,periods=3,arrows=[2]),
+(π=0.8,y=1.0,periods=3,arrows=[2]),
+(π=-2.2,y=-3.0,periods=3,arrows=[2]),
+(π=-0.74,y=-1.0,periods=3,arrows=[2]),
+(π=-2.3,y=-3.0,periods=3,arrows=[2]),
+(π=-0.8,y=-1.0,periods=3,arrows=[2])]
 for start in starts
 	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths1 = pf_path(initial_ss, periods = start[:periods])
+	paths1 = pf_path(initial_ss, periods = start[:periods], lags = 1)
 
 	if start == starts[1]
-		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 1:(start[:periods]-1), label = "Perfect foresight paths", arrow_size = .5)
+		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:start[:periods],
+			v_points = 1:(start[:periods]), label = "Perfect foresight paths", arrow_size = .5,
+			final_arrow = true)
 	else
-		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 1:(start[:periods]-1), label = "", arrow_size = .5)
+		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:start[:periods],
+			v_points = 1:(start[:periods]), label = "", arrow_size = .5, final_arrow = true)
 	end
 end
 plot!(size = (600,400))
+plot!(title = "Perfect foresight estimated Determinate model")
 savefig("figures/phase_illus_perf.pdf")
 
 if false
-	starts = [(π=0.75,y=-1.5,periods=100,arrows=[10,60]),
-		(π=-0.75,y=1.5,periods=100,arrows=[10,60]),
-		(π=0.0,y=-1.5,periods=100,arrows=[10,60]),
-		(π=0.0,y=1.5,periods=100,arrows=[10,60]),
-		(π=-1.024,y=-3.0,periods=80,arrows=[10,55]),
-		(π=-2.350785,y=-3.0,periods=60,arrows=[25]),
-		(π=1.024,y=3.0,periods=80,arrows=[10,55]),
-		(π=2.350785,y=3.0,periods=60,arrows=[25])]
+	starts = [(π=0.756541,y=1.0,periods=10,arrows=[1])]
 
-	periods = 100
+	periods = 5
 
 	anim = @animate for tt in 2:periods
 		plot_ss(plot_points)
 		plot!(size = (600,400))
+		#plot!(xlims = (-30,30))
 		for start in starts
 			initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
 			paths1 = pf_path(initial_ss, periods = periods)
@@ -227,7 +255,7 @@ if false
 		end
 
 	end
-	gif(anim, "figures/phase_illus_perf.gif", fps = 15)
+	gif(anim, "figures/phase_illus_perf.gif", fps = 2)
 end
 
 
@@ -286,7 +314,7 @@ s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N
 
 # Plot simulated time series
 pyplot()
-plot_range = (500000-5999):(500000-4999)
+plot_range = (500000-4999):(500000-0)
 plot(layout=(2,1),legend = false,  link = :x)
 plot!(s.π[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
 plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")

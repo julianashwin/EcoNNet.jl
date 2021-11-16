@@ -18,13 +18,19 @@ function residual = static_resid(T, y, x, params, T_flag)
 if T_flag
     T = general_det_est_learn.static_resid_tt(T, y, x, params);
 end
-residual = zeros(2, 1);
+residual = zeros(4, 1);
 lhs = y(2);
-rhs = y(2)*params(3)+params(4)*y(1)+x(1);
+rhs = y(2)*params(3)+params(4)*y(1)+y(3);
 residual(1) = lhs - rhs;
 lhs = y(1);
-rhs = y(1)*params(1)+y(2)*params(2)+x(2);
+rhs = y(1)*params(1)+y(2)*params(2)+y(4);
 residual(2) = lhs - rhs;
+lhs = y(3);
+rhs = y(3)*params(8)+x(1);
+residual(3) = lhs - rhs;
+lhs = y(4);
+rhs = y(4)*params(9)+x(2);
+residual(4) = lhs - rhs;
 if ~isreal(residual)
   residual = real(residual)+imag(residual).^2;
 end

@@ -1,5 +1,5 @@
 % MH log file (Dynare).
-% 05-Nov-2021 16:34:14.
+% 15-Nov-2021 16:00:14.
  
 
 % Session 1.
@@ -9,19 +9,23 @@
  
   Initial values of the parameters:
     Blck 1:
-      params:1: 0.21468
-      params:2: 1.0264
-      params:3: -0.043694
-      params:4: 0.9174
-      params:5: -0.2317
-      logpo2: -25318.8532
+      params:1: 0.20824
+      params:2: 0.94251
+      params:3: 0.048974
+      params:4: 1.0809
+      params:5: -0.41569
+      params:6: 0.58668
+      params:7: 0.47849
+      logpo2: -3895.6171
     Blck 2:
-      params:1: 0.21304
-      params:2: 1.0273
-      params:3: -0.042422
-      params:4: 0.69129
-      params:5: 0.074131
-      logpo2: -25318.6211
+      params:1: 0.20811
+      params:2: 0.94518
+      params:3: 0.051028
+      params:4: 1.069
+      params:5: -0.39707
+      params:6: 0.59577
+      params:7: 0.47338
+      logpo2: -3897.2781
  
  
   CREATION OF THE MH HISTORY FILE!
@@ -2535,58 +2539,70 @@
       624
  
 
-% Mh1Blck1 (05-Nov-2021 16:34:49)
+% Mh1Blck1 (15-Nov-2021 16:02:29)
  
   Number of simulations.: 10000
-  Acceptance ratio......: 0.0408
+  Acceptance ratio......: 0.3598
   Feval per iteration...: 1
   Posterior mean........:
-    params:1: 0.21453
-    params:2: 1.0247
-    params:3: -0.041427
-    params:4: 0.6796
-    params:5: 0.089161
-    log2po:-25319.7123
+    params:1: 0.20805
+    params:2: 0.93947
+    params:3: 0.05413
+    params:4: 1.0778
+    params:5: -0.41565
+    params:6: 0.59056
+    params:7: 0.47934
+    log2po:-3898.275
   Minimum value.........:
-    params:1: 0.20888
-    params:2: 1.0179
-    params:3: -0.048798
-    params:4: 0.060614
-    params:5: -1.0288
-    log2po:-25329.2532
+    params:1: 0.20194
+    params:2: 0.92518
+    params:3: 0.036345
+    params:4: 1.031
+    params:5: -0.47115
+    params:6: 0.56131
+    params:7: 0.44332
+    log2po:-3910.161
   Maximum value.........:
-    params:1: 0.22176
-    params:2: 1.0338
-    params:3: -0.035871
-    params:4: 1.5058
-    params:5: 0.92331
-    log2po:-25317.5009
+    params:1: 0.21361
+    params:2: 0.95421
+    params:3: 0.072928
+    params:4: 1.1293
+    params:5: -0.3652
+    params:6: 0.6167
+    params:7: 0.51388
+    log2po:-3894.9651
  
 
-% Mh1Blck2 (05-Nov-2021 16:35:27)
+% Mh1Blck2 (15-Nov-2021 16:04:30)
  
   Number of simulations.: 10000
-  Acceptance ratio......: 0.0431
+  Acceptance ratio......: 0.3572
   Feval per iteration...: 1
   Posterior mean........:
-    params:1: 0.21472
-    params:2: 1.0246
-    params:3: -0.041287
-    params:4: 0.73292
-    params:5: 0.016831
-    log2po:-25319.9639
+    params:1: 0.2078
+    params:2: 0.93885
+    params:3: 0.054826
+    params:4: 1.0778
+    params:5: -0.41647
+    params:6: 0.59014
+    params:7: 0.48043
+    log2po:-3898.0945
   Minimum value.........:
-    params:1: 0.20786
-    params:2: 1.017
-    params:3: -0.04639
-    params:4: 0.02102
-    params:5: -1.0242
-    log2po:-25325.9898
+    params:1: 0.20107
+    params:2: 0.92546
+    params:3: 0.03562
+    params:4: 1.0293
+    params:5: -0.46892
+    params:6: 0.56311
+    params:7: 0.45015
+    log2po:-3909.9313
   Maximum value.........:
-    params:1: 0.22079
-    params:2: 1.0317
-    params:3: -0.034249
-    params:4: 1.499
-    params:5: 0.97371
-    log2po:-25317.1384
+    params:1: 0.21427
+    params:2: 0.95529
+    params:3: 0.07111
+    params:4: 1.1261
+    params:5: -0.36394
+    params:6: 0.61748
+    params:7: 0.50916
+    log2po:-3894.8373
  

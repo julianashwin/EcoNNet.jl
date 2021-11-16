@@ -18,14 +18,18 @@ function g1 = static_g1(T, y, x, params, T_flag)
 if T_flag
     T = general_indet_est_learn.static_g1_tt(T, y, x, params);
 end
-g1 = zeros(3, 3);
+g1 = zeros(5, 5);
 g1(1,1)=(-params(4));
 g1(1,2)=1;
 g1(1,3)=(-params(3));
+g1(1,4)=(-1);
 g1(2,2)=1;
 g1(2,3)=(-1);
 g1(3,1)=1-params(1);
 g1(3,2)=(-params(2));
+g1(3,5)=(-1);
+g1(4,5)=1-params(7);
+g1(5,4)=1-params(6);
 if ~isreal(g1)
     g1 = real(g1)+2*imag(g1);
 end

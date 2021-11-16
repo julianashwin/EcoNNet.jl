@@ -22,17 +22,23 @@ function g1 = dynamic_g1(T, y, x, params, steady_state, it_, T_flag)
 if T_flag
     T = general_indet_est_learn.dynamic_g1_tt(T, y, x, params, steady_state, it_);
 end
-g1 = zeros(3, 8);
-g1(1,3)=(-params(4));
-g1(1,4)=1;
-g1(1,5)=(-params(3));
-g1(1,6)=(-1);
-g1(2,4)=1;
+g1 = zeros(5, 12);
+g1(1,5)=(-params(4));
+g1(1,6)=1;
+g1(1,7)=(-params(3));
+g1(1,8)=(-1);
+g1(2,6)=1;
 g1(2,2)=(-1);
-g1(2,8)=(-1);
+g1(2,12)=(-1);
 g1(3,1)=(-params(1));
-g1(3,3)=1;
-g1(3,4)=(-params(2));
-g1(3,7)=(-1);
+g1(3,5)=1;
+g1(3,6)=(-params(2));
+g1(3,9)=(-1);
+g1(4,4)=(-params(7));
+g1(4,9)=1;
+g1(4,11)=(-1);
+g1(5,3)=(-params(6));
+g1(5,8)=1;
+g1(5,10)=(-1);
 
 end

@@ -18,6 +18,6 @@ function g2 = static_g2(T, y, x, params, T_flag)
 if T_flag
     T = general_det_est_learn.static_g2_tt(T, y, x, params);
 end
-g2 = sparse([],[],[],2,4);
+g2 = sparse([],[],[],4,16);
 
 end

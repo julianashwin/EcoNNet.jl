@@ -40,54 +40,14 @@ save param_illus_indet beta kappa eta sigma phi_pi  rho_pi rho_y ...
 %% Loop through many samples
 
 learning_data = readtable('illus_sim.csv');
-
-nruns = 10;
-samplesize = 2000;
-Run = transpose(1:nruns);
-StartObs = transpose(1:samplesize:(nruns*samplesize));
-SampleSize = ones(nruns,1)*samplesize;
-DetDensity = zeros(nruns,1);
-IndetDensity = zeros(nruns,1);
-results_tab = table(Run,StartObs,SampleSize,DetDensity,IndetDensity);
-
-for ii = 1:nruns
-    display("Running estimation "+string(ii))
-    close all
-    % Select relevant data
-    startob = results_tab.StartObs(ii);
-    ssize = results_tab.SampleSize(ii); 
-    y = learning_data.y(startob:(startob+ssize));
-    pi = learning_data.pi(startob:(startob+ssize));
-    r = learning_data.r(startob:(startob+ssize));
-    epsilon_y = learning_data.epsilon_y(startob:(startob+ssize));
-    epsilon_pi = learning_data.epsilon_pi(startob:(startob+ssize));
-    % Save this slice of the data
-    save illus_learning_temp y pi r epsilon_y epsilon_pi
-    try
-        % Estimate determinate model
-        dynare illus_det_est_learn_n2000 noclearall nolog
-        results_tab.DetDensity(ii) = oo_.MarginalDensity.ModifiedHarmonicMean;
-    
-        % Estimate indeterminate model
-        dynare illus_indet_est_learn_n2000 noclearall nolog
-        results_tab.IndetDensity(ii) = oo_.MarginalDensity.ModifiedHarmonicMean;
-    end
-    % Save results to csv
-    writetable(results_tab,'results_table_'+string(ssize)+'.csv','Delimiter',',','QuoteStrings',true)
-end
-
-
-
-
-%% Prepare for baseline cases
-
 y = learning_data.y;
 pi = learning_data.pi;
+p = learning_data.pi;
 r = learning_data.r;
 epsilon_y = learning_data.epsilon_y;
 epsilon_pi = learning_data.epsilon_pi;
 
-save illus_learning_sim y pi r epsilon_y epsilon_pi
+save illus_learning_sim y pi p r epsilon_y epsilon_pi
 
 
 

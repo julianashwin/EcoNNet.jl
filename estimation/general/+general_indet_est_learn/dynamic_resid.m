@@ -22,15 +22,21 @@ function residual = dynamic_resid(T, y, x, params, steady_state, it_, T_flag)
 if T_flag
     T = general_indet_est_learn.dynamic_resid_tt(T, y, x, params, steady_state, it_);
 end
-residual = zeros(3, 1);
-lhs = y(4);
-rhs = params(3)*y(5)+params(4)*y(3)+x(it_, 1);
+residual = zeros(5, 1);
+lhs = y(6);
+rhs = params(3)*y(7)+params(4)*y(5)+y(8);
 residual(1) = lhs - rhs;
-lhs = y(4)-y(2);
+lhs = y(6)-y(2);
 rhs = x(it_, 3);
 residual(2) = lhs - rhs;
-lhs = y(3);
-rhs = params(1)*y(1)+y(4)*params(2)+x(it_, 2);
+lhs = y(5);
+rhs = params(1)*y(1)+y(6)*params(2)+y(9);
 residual(3) = lhs - rhs;
+lhs = y(9);
+rhs = params(7)*y(4)+x(it_, 2);
+residual(4) = lhs - rhs;
+lhs = y(8);
+rhs = params(6)*y(3)+x(it_, 1);
+residual(5) = lhs - rhs;
 
 end

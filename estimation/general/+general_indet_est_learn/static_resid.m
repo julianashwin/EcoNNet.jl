@@ -18,16 +18,22 @@ function residual = static_resid(T, y, x, params, T_flag)
 if T_flag
     T = general_indet_est_learn.static_resid_tt(T, y, x, params);
 end
-residual = zeros(3, 1);
+residual = zeros(5, 1);
 lhs = y(2);
-rhs = params(3)*y(3)+params(4)*y(1)+x(1);
+rhs = params(3)*y(3)+params(4)*y(1)+y(4);
 residual(1) = lhs - rhs;
 lhs = y(2)-y(3);
 rhs = x(3);
 residual(2) = lhs - rhs;
 lhs = y(1);
-rhs = y(1)*params(1)+y(2)*params(2)+x(2);
+rhs = y(1)*params(1)+y(2)*params(2)+y(5);
 residual(3) = lhs - rhs;
+lhs = y(5);
+rhs = y(5)*params(7)+x(2);
+residual(4) = lhs - rhs;
+lhs = y(4);
+rhs = y(4)*params(6)+x(1);
+residual(5) = lhs - rhs;
 if ~isreal(residual)
   residual = real(residual)+imag(residual).^2;
 end

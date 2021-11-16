@@ -18,11 +18,15 @@ function g1 = static_g1(T, y, x, params, T_flag)
 if T_flag
     T = general_det_est_learn.static_g1_tt(T, y, x, params);
 end
-g1 = zeros(2, 2);
+g1 = zeros(4, 4);
 g1(1,1)=(-params(4));
 g1(1,2)=1-params(3);
+g1(1,3)=(-1);
 g1(2,1)=1-params(1);
 g1(2,2)=(-params(2));
+g1(2,4)=(-1);
+g1(3,3)=1-params(8);
+g1(4,4)=1-params(9);
 if ~isreal(g1)
     g1 = real(g1)+2*imag(g1);
 end

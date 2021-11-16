@@ -18,6 +18,6 @@ function g3 = static_g3(T, y, x, params, T_flag)
 if T_flag
     T = general_det_est_learn.static_g3_tt(T, y, x, params);
 end
-g3 = sparse([],[],[],2,8);
+g3 = sparse([],[],[],4,64);
 
 end

@@ -34,10 +34,10 @@ end;
 varobs y pi;
 
 estimated_params;
-//beta, 0.95,-2,2, normal_pdf, 1, 1,,;
+beta, 0.95,0,2, normal_pdf, 1, 1,,;
 kappa, 0.05,-2,2, normal_pdf, 0, 1,,;
-eta, 0.95,-2,2, normal_pdf, 1, 1,,;
-//sigma, 0.25,-2,2, normal_pdf, 0, 1,,;
+eta, 0.95,0,2, normal_pdf, 1, 1,,;
+sigma, 0.25,-2,2, normal_pdf, 0, 1,,;
 phi_pi, 1.5,-2,4, normal_pdf, 2, 1,,;
 rho_pi, 0,-2,2, normal_pdf, 0, 1,,;
 rho_y, 0,-2,2, normal_pdf, 0, 1,,;
@@ -52,7 +52,7 @@ end;
 
 
 estimation(datafile=illus_learning_sim,
-first_obs = 1, nobs = 1000, mode_compute=6, mh_replic = 5000,
+first_obs = 1, nobs = 10000, mode_compute=6, mh_replic = 5000,
 mh_jscale = 2, order = 1) y pi ;
 
 

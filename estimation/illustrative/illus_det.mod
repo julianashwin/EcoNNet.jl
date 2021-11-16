@@ -32,8 +32,6 @@ var nu_pi; stderr sigma_pi;
 var nu_y; stderr sigma_y;
 end;
 
-varobs y pi;
-stoch_simul(periods=100000,drop=2500, order=1,irf=20);
+stoch_simul(periods=1000000,drop=2500, order=1,irf=100);
 
 
-save 'illus_sim_det' y pi;

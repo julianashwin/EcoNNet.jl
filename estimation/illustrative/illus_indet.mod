@@ -52,7 +52,7 @@ corr nu_pi, sunspot = omega23;
 end;
 
 varobs y pi;
-stoch_simul(periods=100000,drop=2500, order=1,irf=100);
+stoch_simul(periods=100000,drop=2500, order=1,irf=100, replic = 50);
 
 
 save 'illus_sim_indet' y pi;

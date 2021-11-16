@@ -218,6 +218,7 @@ options_.drop = 2500;
 options_.irf = 100;
 options_.order = 1;
 options_.periods = 100000;
+options_.replic = 50;
 var_list_ = {};
 [info, oo_, options_, M_] = stoch_simul(M_, options_, oo_, var_list_);
 save 'illus_sim_indet' y pi;
