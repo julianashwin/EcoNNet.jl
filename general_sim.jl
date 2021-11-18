@@ -270,15 +270,13 @@ s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N
 pyplot()
 plot_range = (500000-5999):(500000-4999)
 plot(layout=(2,1),legend = false,  link = :x)
-plot!(s.π[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
+plot!(s.p[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
 plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
 plot!(size = (600,300))
 savefig("figures/general/general_sim_series.pdf")
 
 export_df = s[options.N-99999:options.N,:]
-rename!(export_df, replace.(names(export_df), "π" => "pi"))
 rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
-export_df.r = par.ϕ_π.*export_df.pi .+ par.α_3.*export_df.pi.^3
 
 CSV.write("estimation/general/general_sim.csv", export_df)
 
@@ -292,7 +290,7 @@ plot_ss(plot_points)
 initial_ss = deepcopy(central)
 starts = [(p=-1.5,y=3.0,periods=100,arrows=[4,60]),
 	(p=1.5,y=-3.0,periods=100,arrows=[4,60]),
-	(p=0.0,y=1.0,periods=100,arrows=[25]),
+	(p=0.0,y=0.1,periods=100,arrows=[25]),
 	(p=0.0,y=-0.04,periods=100,arrows=[25]),
 	]
 for start in starts

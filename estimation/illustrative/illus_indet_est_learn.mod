@@ -27,9 +27,9 @@ set_param_value('rho_y',rho_y); // output shock persistence
 
 
 model(linear);
-pi = beta*ps + kappa*y + epsilon_pi;
+pi = cons_pi + beta*ps + kappa*y + epsilon_pi;
 pi - ps(-1) = sunspot;
-y = eta*y(-1) - sigma*(phi_pi*pi - ps) + epsilon_y;
+y = cons_y + eta*y(-1) - sigma*(phi_pi*pi - ps) + epsilon_y;
 epsilon_pi = rho_pi*epsilon_pi(-1) + nu_pi;
 epsilon_y = rho_y*epsilon_y(-1) + nu_y;
 end;
