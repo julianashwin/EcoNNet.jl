@@ -25,8 +25,10 @@ leads and lags are specified as a `_lead` or `_lag` suffix
     exogenous = [:ϵ_p,:ϵ_y],
     states = [:y_lag, :ϵ_p, :ϵ_y],
 	auxiliary = [],
-	burnin = 50000,
-    N = 500000, num_nodes = 24, activation = σ, window = 40000)
+	burnin = 100000,
+    N = 1000000, num_nodes = 24, activation = relu, max_iter = 20,
+	burnin_use_net = false, window = 99999, learning_gap = 100000,
+	plotting_gap = 100000, plot_vars = [:p, :y, :Ep, :Ey])
 
 @everywhere beliefs = initialise_beliefs(options)
 
@@ -37,7 +39,7 @@ Define the parameters as a Named Tuple.
 @everywhere par = (ϕ_pp = 0.95, ϕ_py = 0.5,
 	ϕ_yy = 0.9, ϕ_yp = 0.1,
     α_2 = 0.0, α_3 = 0.1125,
-	ρ_y = 0.0, σ_y = 0.5, ρ_p = 0.5, σ_p = 0.5);
+	ρ_y = 0.5, σ_y = 0.3, ρ_p = 0.5, σ_p = 0.3);
 
 
 """
@@ -207,7 +209,7 @@ for start in starts
 	end
 end
 plot!(size = (600,400))
-plot!(title = "Perfect foresight")
+#plot!(title = "Perfect foresight")
 savefig("figures/general/phase_compsink_perf.pdf")
 
 
@@ -273,12 +275,12 @@ plot(layout=(2,1),legend = false,  link = :x)
 plot!(s.p[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
 plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
 plot!(size = (600,300))
-savefig("figures/general/general_sim_series.pdf")
+#savefig("figures/general/general_sim_series.pdf")
 
 export_df = s[options.N-99999:options.N,:]
 rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
 
-CSV.write("estimation/general/general_sim.csv", export_df)
+#CSV.write("estimation/general/general_sim.csv", export_df)
 
 
 """
@@ -290,8 +292,8 @@ plot_ss(plot_points)
 initial_ss = deepcopy(central)
 starts = [(p=-1.5,y=3.0,periods=100,arrows=[4,60]),
 	(p=1.5,y=-3.0,periods=100,arrows=[4,60]),
-	(p=0.0,y=0.1,periods=100,arrows=[25]),
-	(p=0.0,y=-0.04,periods=100,arrows=[25]),
+	(p=0.1,y=0.1,periods=100,arrows=[25]),
+	(p=-0.2,y=-0.2,periods=100,arrows=[25]),
 	]
 for start in starts
 	initial_ss[:p] = start[:p]; initial_ss[:y] = start[:y];
@@ -308,44 +310,550 @@ for start in starts
 		end
 end
 plot!(size = (600,400))
-savefig("figures/general/phase_general_sim.pdf")
+savefig("figures/general/phase_compsink_sim.pdf")
 
-starts = [(π=3.0,y=3.0,periods=100,arrows=[10]),
-	(π=-3.,y=-3.,periods=100,arrows=[10]),
-	(π=-0.008,y=-0.008,periods=100,arrows=[40, 65]),
-	(π=-0.03,y=-0.03,periods=100,arrows=[40, 65]),
-	#(π=1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=1.0,y=-1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=-1.0,periods=100,arrows=[9])
-	]
-periods = 100
-anim = @animate for tt in 2:periods
-	plot_ss(plot_points)
-	for start in starts
-		initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-		paths1 = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = tt,
-			magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
-		paths1.y_lag = cat(start[:y],paths1.y[1:(tt -1 )],dims=1)
-		if start == starts[1]
-			phase_arrow_plot(paths1, [:y_lag,:π], arrow_points=[], h_points = 2:min(start[:periods], tt),
-				v_points = 2:(min(start[:periods], tt)), label = "Perfect foresight paths", arrow_size = .5)
-			if tt >=3
-				phase_arrow_plot(paths1, [:y_lag,:π], arrow_points=[min(start[:periods], tt)-2], h_points = 2:min(start[:periods], tt),
-					v_points = 2:(min(start[:periods], tt)), label = "", arrow_size = .5)
-			end
-		else
-			phase_arrow_plot(paths1, [:y_lag,:π], arrow_points=[], h_points = 2:min(start[:periods], tt),
-				v_points = 2:(min(start[:periods], tt)), label = "", arrow_size = .5)
-			if tt >=3
-				phase_arrow_plot(paths1, [:y_lag,:π], arrow_points=[min(start[:periods], tt)-2], h_points = 2:min(start[:periods], tt),
-					v_points = 2:(min(start[:periods], tt)), label = "", arrow_size = .5)
-			end
-		end
-	end
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
+Real sink
+"""
+
+@everywhere par = (ϕ_pp = 0.95, ϕ_py = 0.5,
+	ϕ_yy = 0.6, ϕ_yp = 0.1,
+    α_2 = 0.0, α_3 = 0.1125,
+	ρ_y = 0.0, σ_y = 0.05, ρ_p = 0.95, σ_p = 0.05);
+
+ystar = 0.0
+a_11 = (1 - (par.ϕ_py - 3*ystar^2*par.α_3)*par.ϕ_yp)/par.ϕ_pp
+a_12 = (-(par.ϕ_py - 3*ystar^2*par.α_3)*par.ϕ_yy)/par.ϕ_pp
+a_21 = par.ϕ_yp
+a_22 = par.ϕ_yy
+A_matrix = [a_11 a_12;
+	a_21 a_22]
+eigen(A_matrix)
+
+sstates = nlsolve(steady_states, [2.0, 2.0])
+upper[:p] = sstates.zero[1];
+upper[:y] = sstates.zero[2];
+upper[:Ep_lead] = upper[:p];
+# lower steady state
+sstates = nlsolve(steady_states, [-2.0, -2.0])
+lower = Dict{Symbol,Float64}();
+lower[:p] = sstates.zero[1];
+lower[:y] = sstates.zero[2];
+lower[:Ep_lead] = lower[:p];
+
+
+"""
+Perfect foresight phase
+"""
+
+pyplot()
+plot_points = -4.0:0.01:4.0;
+function plot_ss(plot_points)
+	ss_plot = plot(xlabel = L"y_{t-1}", xlims = (minimum(plot_points),maximum(plot_points)),
+    	ylabel = L"p_t", ylims = (-10.0,10.0),legend=:bottomright, yguidefontrotation=-90)
+		plot!(plot_points,p_condition.(plot_points), label = "p condition", color = :black)
+		display(plot!(y_condition.(2.5.*plot_points),2.5.*plot_points, label = "y condition", color = :green))
+		# Plot perfect foresight paths
+	return ss_plot
 end
-gif(anim, "figures/general/phase_general_sim.gif", fps = 15)
+
+starts = [(p=3.0,y=1.0,periods=20,arrows=[1]),
+	(p=-3.0,y=-1.0,periods=20,arrows=[1]),
+	(p=2.0,y=1.0,periods=20,arrows=[1,4]),
+	(p=-2.0,y=-1.0,periods=20,arrows=[1,4]),
+	(p=-2.5,y=3.75,periods=18,arrows=[1]),
+	(p=2.5,y=-3.75,periods=18,arrows=[1]),
+	(p=-2.5,y=3.85,periods=30,arrows=[1]),
+	(p=2.5,y=-3.85,periods=30,arrows=[1]),
+	#(p=7.0,y=-3.5,periods=40,arrows=[4]),
+	#(p=-7.0,y=3.5,periods=40,arrows=[4]),
+	#(p=-8.32,y=3.5,periods=10,arrows=[3]),
+	#(p=0.0,y=3.0,periods=10,arrows=[3])
+	]
+starts = [(p=-1.0,y=4.1,periods=20,arrows=[4]),
+	(p=1.0,y=-4.1,periods=20,arrows=[4]),
+	(p=-1.0,y=3.8,periods=18,arrows=[4]),
+	(p=1.0,y=-3.8,periods=18,arrows=[4]),
+	(p=6.5,y=-2.0,periods=30,arrows=[4]),
+	(p=-6.5,y=2.0,periods=30,arrows=[4]),
+	(p=7.0,y=-3.5,periods=40,arrows=[4]),
+	(p=-7.0,y=3.5,periods=40,arrows=[4]),
+	(p=1.55,y=3.5,periods=6,arrows=[2]),
+	(p=-1.55,y=-3.5,periods=6,arrows=[2]),
+	(p=8.32,y=-3.5,periods=10,arrows=[3]),
+	(p=-8.32,y=3.5,periods=10,arrows=[3]),
+	]
+plot_ss(plot_points)
+initial_ss = deepcopy(central)
+for start in starts
+	initial_ss[:p] = start[:p]; initial_ss[:y] = start[:y];
+	paths1 = pf_path(initial_ss, periods = start[:periods])
+
+	if start == starts[1]
+		phase_arrow_plot(paths1, [:y,:p], arrow_points=start[:arrows], h_points = 1:start[:periods],
+			v_points = 1:(start[:periods]), label = "Perfect foresight paths", arrow_size = .5,
+			final_arrow = true)
+	else
+		phase_arrow_plot(paths1, [:y,:p], arrow_points=start[:arrows], h_points = 1:start[:periods],
+			v_points = 1:(start[:periods]), label = "", arrow_size = .5,
+			final_arrow = true)
+	end
+end
+plot!(size = (600,400))
+savefig("figures/general/phase_realsink_perf.pdf")
+
+
+"""
+Re-train beliefs
+"""
+# Initialise beliefs
+@everywhere beliefs = initialise_beliefs(options)
+s = initialise_df(s, central, gap = 500, steadystate_alt = central)
+@time beliefs = learn!(beliefs, s, options.N, options, indices, loss)
+
+# Simulate the learning for a set number of periods
+noise_p = par.σ_p*randn(nrow(s)) + alternating_shocks(nrow(s), gap=400, mag = 1.0)
+s.ϵ_p = simulate_ar(par.ρ_p, par.σ_p, options.N, noise_p)
+plot(s.ϵ_p[1:1000])
+noise_y = par.σ_y*randn(nrow(s))
+s.ϵ_y = simulate_ar(par.ρ_y, par.σ_y, options.N, noise_y)
+plot(s.ϵ_y[1:1000])
+s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], lower, gap = 500, steadystate_alt = upper);
+s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
+@time beliefs, s = simulate_learning((options.burnin+1):options.N, s, beliefs, indices, options)
+
+# Repeat learning with new shocks
+noise_p = par.σ_p*randn((options.N - options.burnin)) +
+	alternating_shocks((options.N - options.burnin), gap=400, mag = 1.0)
+noise_y = par.σ_y*randn((options.N - options.burnin))
+gr() # Set GR backend for plots as it's the fastest
+s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:]
+s.ϵ_p[(options.burnin+1):options.N] = simulate_ar(par.ρ_p, par.σ_p, options.N - options.burnin, noise_p)
+s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
+@time beliefs, s = simulate_learning((options.burnin+1):options.N, s, beliefs, indices, options)
+
+
+# Plot simulated time series
+pyplot()
+plot_range = (500000-5999):(500000-4999)
+plot(layout=(2,1),legend = false,  link = :x)
+plot!(s.p[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
+plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
+plot!(size = (600,300))
+
+# Check IRFs
+paths1 = irf(:ϵ_y, upper, beliefs, shock_period = 5, periods = 100,
+	magnitude = -0.5, persistence = par.ρ_y, show_plot = false)
+paths2 = irf(:ϵ_y, lower, beliefs, shock_period = 5, periods = 100,
+	magnitude = 0.5, persistence = par.ρ_y, show_plot = false)
+plot(paths1.p, label =L"p_t", xlabel = "Periods", legend = :bottomright)
+plot!(paths1.y, label =L"y_t");
+plot!(paths1.ϵ_y, label =L"\epsilon_{y,t}")
+plot(paths2.p, label =L"p_t", xlabel = "Periods", legend = false)
+plot!(paths2.y, label =L"y_t");
+plot!(paths2.ϵ_y, label =L"\epsilon_{y,t}")
+
+
+"""
+Plot phase diagram
+"""
+# Solution phase diagram
+pyplot()
+plot_ss(plot_points)
+initial_ss = deepcopy(central)
+starts = [(p=0.0,y=4.0,periods=5,arrows=[2]),
+	(p=0.0,y=-4.0,periods=5,arrows=[2]),
+	(p=0.0,y=0.0,periods=5,arrows=[2]),
+	#(p=0.0,y=-1.0,periods=100,arrows=[25]),
+	#(p=5.0,y=0.0,periods=100,arrows=[25]),
+	#(p=-5.0,y=-0.0,periods=100,arrows=[25]),
+	]
+for start in starts
+	initial_ss[:p] = start[:p]; initial_ss[:y] = start[:y];
+	paths = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = start[:periods],
+		magnitude = 1.0, persistence = par.ρ_y, show_plot = false)
+	paths.y_lag = cat(start[:y],paths.y[1:(start.periods -1 )],dims=1)
+	if start == starts[1]
+		phase_arrow_plot(paths, [:y_lag,:p], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 2:(start[:periods]), label = "Equilibrium paths", arrow_size = .5,
+			final_arrow = true)
+	else
+		phase_arrow_plot(paths, [:y_lag,:p], arrow_points=start[:arrows], h_points = 2:(start[:periods]),
+			v_points = 2:start[:periods], arrow_size = .5, final_arrow = true)
+		end
+end
+plot!(size = (600,400))
+savefig("figures/general/phase_realsink_sim.pdf")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
+Complex source
+"""
+
+@everywhere par = (ϕ_pp = 0.95, ϕ_py = 0.5,
+	ϕ_yy = 1.5, ϕ_yp = 0.1,
+    α_2 = 0.0, α_3 = 0.1125,
+	ρ_y = 0.5, σ_y = 0.5, ρ_p = 0.5, σ_p = 1.5);
+
+a_11 = (1 - par.ϕ_py*par.ϕ_yp)/par.ϕ_pp
+a_12 = - (par.ϕ_py*par.ϕ_yy)/par.ϕ_pp
+a_21 = par.ϕ_yp
+a_22 = par.ϕ_yy
+A_matrix = [a_11 a_12;
+	a_21 a_22]
+eigen(A_matrix)
+
+sstates = nlsolve(steady_states, [2.0, 2.0])
+upper[:p] = sstates.zero[1];
+upper[:y] = sstates.zero[2];
+upper[:Ep_lead] = upper[:p];
+# lower steady state
+lower = Dict{Symbol,Float64}();
+lower[:p] = sstates.zero[1];
+lower[:y] = sstates.zero[2];
+lower[:Ep_lead] = lower[:p];
+
+
+"""
+Perfect foresight phase
+"""
+pyplot()
+plot_points = -4.0:0.01:4.0;
+function plot_ss(plot_points)
+	ss_plot = plot(xlabel = L"y_{t-1}", xlims = (minimum(plot_points),maximum(plot_points)),
+    	ylabel = L"p_t", ylims = (-16.0,16.0),legend=:bottomright, yguidefontrotation=-90)
+		plot!(plot_points,p_condition.(plot_points), label = "p condition", color = :black)
+		display(plot!(y_condition.(5.0.*plot_points),5.0.*plot_points, label = "y condition", color = :green))
+		# Plot perfect foresight paths
+	return ss_plot
+end
+
+starts = [(p=0.05,y=0.05,periods=20,arrows=[6]),
+	(p=-0.05,y=-0.05,periods=20,arrows=[6]),
+	(p=0.1,y=-0.05,periods=20,arrows=[16]),
+	(p=-0.1,y=0.05,periods=20,arrows=[16]),
+	(p=1.5,y=-0.5755804,periods=25,arrows=[4]),
+	(p=-1.5,y=0.5755804,periods=25,arrows=[4]),
+	(p=1.5,y=-0.577,periods=17,arrows=[4]),
+	(p=-1.5,y=0.577,periods=17,arrows=[4]),
+	(p=1.5,y=-0.574,periods=18,arrows=[4]),
+	(p=-1.5,y=0.574,periods=18,arrows=[4]),
+	]
+plot_ss(plot_points)
+plot!(legend = :topright)
+initial_ss = deepcopy(central)
+for start in starts
+	initial_ss[:p] = start[:p]; initial_ss[:y] = start[:y];
+	paths1 = pf_path(initial_ss, periods = start[:periods])
+
+	if start == starts[1]
+		phase_arrow_plot(paths1, [:y,:p], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 1:(start[:periods]-1), label = "Perfect foresight paths", arrow_size = .5,
+			final_arrow = true)
+	else
+		phase_arrow_plot(paths1, [:y,:p], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 1:(start[:periods]-1), label = "", arrow_size = .5,
+			final_arrow = true)
+	end
+end
+plot!(size = (600,400))
+savefig("figures/general/phase_compsource_perf.pdf")
+
+
+"""
+Re-train beliefs
+"""
+# Initialise beliefs
+@everywhere beliefs = initialise_beliefs(options)
+s = initialise_df(s, lower, gap = 500, steadystate_alt = upper)
+@time beliefs = learn!(beliefs, s, options.N, options, indices, loss)
+
+# Simulate the learning for a set number of periods
+noise_p = par.σ_p*randn(nrow(s))
+s.ϵ_p = simulate_ar(par.ρ_p, par.σ_p, options.N, noise_p)
+noise_y = par.σ_y*randn(nrow(s))
+s.ϵ_y = simulate_ar(par.ρ_y, par.σ_y, options.N, noise_y)
+plot(s.ϵ_y[1:1000])
+s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], lower, gap = 500, steadystate_alt = upper);
+s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
+@time beliefs, s = simulate_learning((options.burnin+1):options.N, s, beliefs, indices, options)
+
+# Repeat learning with new shocks
+noise_p = par.σ_p*randn((options.N - options.burnin))
+noise_y = par.σ_y*randn((options.N - options.burnin))
+gr() # Set GR backend for plots as it's the fastest
+s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:]
+s.ϵ_p[(options.burnin+1):options.N] = simulate_ar(par.ρ_p, par.σ_p, options.N - options.burnin, noise_p)
+s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
+@time beliefs, s = simulate_learning((options.burnin+1):options.N, s, beliefs, indices, options)
+
+# Plot simulated time series
+pyplot()
+plot_range = (500000-5999):(500000-4999)
+plot(layout=(2,1),legend = false,  link = :x)
+plot!(s.p[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
+plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
+plot!(size = (600,300))
+
+"""
+Plot phase diagram
+"""
+# Solution phase diagram
+pyplot()
+plot_ss(plot_points)
+plot!(legend = :topright)
+initial_ss = deepcopy(central)
+starts = [(p=0.0,y=2.8,periods=16,arrows=[2]),
+	(p=0.0,y=-3.8,periods=8,arrows=[2]),
+	(p=0.0,y=-0.99,periods=100,arrows=[20]),
+	(p=0.0,y=-0.9,periods=100,arrows=[45]),
+	#(p=5.0,y=0.0,periods=100,arrows=[25]),
+	#(p=-5.0,y=-0.0,periods=100,arrows=[25]),
+	]
+for start in starts
+	initial_ss[:p] = start[:p]; initial_ss[:y] = start[:y];
+	paths = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = start[:periods],
+		magnitude = 1.0, persistence = par.ρ_y, show_plot = false)
+	paths.y_lag = cat(start[:y],paths.y[1:(start.periods -1 )],dims=1)
+	if start == starts[1]
+		phase_arrow_plot(paths, [:y_lag,:p], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 2:(start[:periods]), label = "Equilibrium paths", arrow_size = .5,
+			final_arrow = true)
+	else
+		phase_arrow_plot(paths, [:y_lag,:p], arrow_points=start[:arrows], h_points = 2:(start[:periods]),
+			v_points = 2:start[:periods], arrow_size = .5, final_arrow = true)
+		end
+end
+plot!(size = (600,400))
+savefig("figures/general/phase_compsource_sim.pdf")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
+Real source
+"""
+
+@everywhere par = (ϕ_pp = 0.95, ϕ_py = 0.5,
+	ϕ_yy = 2.0, ϕ_yp = 0.25,
+    α_2 = 0.0, α_3 = 0.1125,
+	ρ_y = 0.5, σ_y = 0.5, ρ_p = 0.5, σ_p = 1.0);
+
+a_11 = (1 - par.ϕ_py*par.ϕ_yp)/par.ϕ_pp
+a_12 = - (par.ϕ_py*par.ϕ_yy)/par.ϕ_pp
+a_21 = par.ϕ_yp
+a_22 = par.ϕ_yy
+A_matrix = [a_11 a_12;
+	a_21 a_22]
+eigen(A_matrix)
+
+sstates = nlsolve(steady_states, [2.0, 2.0])
+upper[:p] = sstates.zero[1];
+upper[:y] = sstates.zero[2];
+upper[:Ep_lead] = upper[:p];
+# lower steady state
+lower = Dict{Symbol,Float64}();
+lower[:p] = sstates.zero[1];
+lower[:y] = sstates.zero[2];
+lower[:Ep_lead] = lower[:p];
+
+
+"""
+Perfect foresight phase
+"""
+pyplot()
+plot_points = -4.0:0.01:4.0;
+function plot_ss(plot_points)
+	ss_plot = plot(xlabel = L"y_{t-1}", xlims = (minimum(plot_points),maximum(plot_points)),
+    	ylabel = L"p_t", ylims = (-16.0,16.0),legend=:bottomright, yguidefontrotation=-90)
+		plot!(plot_points,p_condition.(plot_points), label = "p condition", color = :black)
+		display(plot!(y_condition.(5.0.*plot_points),5.0.*plot_points, label = "y condition", color = :green))
+		# Plot perfect foresight paths
+	return ss_plot
+end
+
+starts = [(p=0.05,y=-0.05,periods=20,arrows=[4]),
+	(p=-0.05,y=0.05,periods=20,arrows=[4]),
+	(p=0.5,y=-0.215128,periods=30,arrows=[12, 17]),
+	(p=0.5,y=-0.215124,periods=30,arrows=[12, 20]),
+	(p=-0.5,y=0.215128,periods=30,arrows=[12, 17]),
+	(p=-0.5,y=0.215124,periods=30,arrows=[12, 20]),
+	(p=0.5,y=-0.21512511575,periods=25,arrows=[12]),
+	(p=-0.5,y=0.21512511575,periods=25,arrows=[12]),
+	#(p=4.0,y=-1.5,periods=20,arrows=[4]),
+	#(p=-4.0,y=1.5,periods=20,arrows=[4])
+	]
+plot_ss(plot_points)
+plot!(legend = :topright)
+initial_ss = deepcopy(central)
+for start in starts
+	initial_ss[:p] = start[:p]; initial_ss[:y] = start[:y];
+	paths1 = pf_path(initial_ss, periods = start[:periods])
+
+	if start == starts[1]
+		phase_arrow_plot(paths1, [:y,:p], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 1:(start[:periods]-1), label = "Perfect foresight paths", arrow_size = .5,
+			final_arrow = true)
+	else
+		phase_arrow_plot(paths1, [:y,:p], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 1:(start[:periods]-1), label = "", arrow_size = .5,
+			final_arrow = true)
+	end
+end
+plot!(size = (600,400))
+savefig("figures/general/phase_realsource_perf.pdf")
+
+
+"""
+Re-train beliefs
+"""
+# Initialise beliefs
+@everywhere beliefs = initialise_beliefs(options)
+s = initialise_df(s, lower, gap = 500, steadystate_alt = upper)
+@time beliefs = learn!(beliefs, s, options.N, options, indices, loss)
+
+# Simulate the learning for a set number of periods
+noise_p = par.σ_p*randn(nrow(s))
+s.ϵ_p = simulate_ar(par.ρ_p, par.σ_p, options.N, noise_p)
+noise_y = par.σ_y*randn(nrow(s))
+s.ϵ_y = simulate_ar(par.ρ_y, par.σ_y, options.N, noise_y)
+plot(s.ϵ_y[1:1000])
+s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], lower, gap = 500, steadystate_alt = upper);
+s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
+@time beliefs, s = simulate_learning((options.burnin+1):options.N, s, beliefs, indices, options)
+
+# Repeat learning with new shocks
+noise_p = par.σ_p*randn((options.N - options.burnin))
+noise_y = par.σ_y*randn((options.N - options.burnin))
+gr() # Set GR backend for plots as it's the fastest
+s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:]
+s.ϵ_p[(options.burnin+1):options.N] = simulate_ar(par.ρ_p, par.σ_p, options.N - options.burnin, noise_p)
+s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
+@time beliefs, s = simulate_learning((options.burnin+1):options.N, s, beliefs, indices, options)
+
+# Plot simulated time series
+pyplot()
+plot_range = (500000-9999):(500000-8999)
+plot(layout=(2,1),legend = false,  link = :x)
+plot!(s.p[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
+plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
+plot!(size = (600,300))
+
+"""
+Plot phase diagram
+"""
+# Solution phase diagram
+pyplot()
+plot_ss(plot_points)
+plot!(legend = :topright)
+initial_ss = deepcopy(central)
+starts = [(p=0.0,y=-4.0,periods=20,arrows=[4]),
+	(p=0.0,y=4.0,periods=20,arrows=[4]),
+	(p=0.0,y=-0.65,periods=80,arrows=[2, 20]),
+	(p=0.0,y=-0.79,periods=40,arrows=[2, 14]),
+	#(p=5.0,y=0.0,periods=100,arrows=[25]),
+	#(p=-5.0,y=-0.0,periods=100,arrows=[25]),
+	]
+for start in starts
+	initial_ss[:p] = start[:p]; initial_ss[:y] = start[:y];
+	paths = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = start[:periods],
+		magnitude = 1.0, persistence = par.ρ_y, show_plot = false)
+	paths.y_lag = cat(start[:y],paths.y[1:(start.periods -1 )],dims=1)
+	if start == starts[1]
+		phase_arrow_plot(paths, [:y_lag,:p], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 2:(start[:periods]), label = "Equilibrium paths", arrow_size = .5,
+			final_arrow = true)
+	else
+		phase_arrow_plot(paths, [:y_lag,:p], arrow_points=start[:arrows], h_points = 2:(start[:periods]),
+			v_points = 2:start[:periods], arrow_size = .5, final_arrow = true)
+		end
+end
+plot!(size = (600,400))
+savefig("figures/general/phase_realsource_sim.pdf")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 """
@@ -466,6 +974,53 @@ savefig("figures/general/heatmap_errors_general_sim.pdf")
 
 Rsq_π = 1 - var(heatmap_df.π-heatmap_df.Eπ)/var(heatmap_df.π)
 Rsq_y = 1 - var(heatmap_df.y-heatmap_df.Ey)/var(heatmap_df.y)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 """
