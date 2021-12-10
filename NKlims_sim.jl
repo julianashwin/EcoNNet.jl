@@ -178,23 +178,24 @@ EE_kink = par.R_lim*(1-par.ϕ_π)/(par.ϕ_π*par.ϕ_y+(1-par.ϕ_π)*par.ϕ_y)
 ## Steady state conditions
 pyplot()
 plot_points = -1:0.001:1
-ss_plot = plot(xlabel = L"y_t", xlims = (-0.07,0.07),
-    ylabel = L"\pi_t", ylims = (-0.07, 0.07),legend=:topright)
-plot!(plot_points, ZLB_bind_condition.(plot_points),
-	fillrange=[minimum(plot_points)*ones(len(plot_points))], fillalpha = 0.5,
-	 color = :paleturquoise1, label = "ZLB")
-plot!(plot_points,NKPC_condition.(plot_points), label = "Phillips Curve", color = :black)
-plot!(par.y_lim:0.001:EE_kink,EE_normal_condition.(par.y_lim:0.001:EE_kink),
- 	label = "Euler Equation", color = :green)
-plot!(par.y_lim:0.001:EE_kink,EE_ZLB_condition.(par.y_lim:0.001:EE_kink),
- 	label = "", color = :green)
-plot!([par.y_lim,par.y_lim],[par.R_lim,-0.07],
- 	label = "", color = :green)
-display(ss_plot)
-
+function plot_ss(plot_points)
+	ss_plot = plot(xlabel = L"y_t", xlims = (-0.07,0.07),
+	    ylabel = L"\pi_t", ylims = (-0.07, 0.07),legend=:topright)
+	plot!(plot_points, ZLB_bind_condition.(plot_points),
+		fillrange=[minimum(plot_points)*ones(len(plot_points))], fillalpha = 0.5,
+		 color = :paleturquoise1, label = "ELB")
+	plot!(plot_points,NKPC_condition.(plot_points), label = "Phillips Curve", color = :black)
+	plot!(par.y_lim:0.001:EE_kink,EE_normal_condition.(par.y_lim:0.001:EE_kink),
+	 	label = "Euler Equation", color = :green)
+	plot!(par.y_lim:0.001:EE_kink,EE_ZLB_condition.(par.y_lim:0.001:EE_kink),
+	 	label = "", color = :green)
+	plot!([par.y_lim,par.y_lim],[par.R_lim,-0.07],
+	 	label = "", color = :green)
+	return ss_plot
+end
 ## Plot perfect foresight paths
 pyplot()
-phase_plot = ss_plot
+phase_plot = plot_ss(plot_points)
 initial_ss = deepcopy(central)
 starts = [(π=0.003,y=0.003, periods=5,arrows=[4]),
 	(π=-0.003,y=-0.003,periods=5,arrows=[4]),
@@ -210,11 +211,28 @@ for start in starts
 	print(start)
 	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
 	paths1 = pf_path(initial_ss, periods = start[:periods], lags = 2)
-	phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:start[:periods],
-		v_points = 1:start[:periods])
+	if start == starts[1]
+		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:start[:periods],
+			v_points = 1:start[:periods], label = "Perfect foresight", arrow_size = .5,
+			final_arrow = true)
+	else
+		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:start[:periods],
+			v_points = 1:start[:periods], arrow_size = .5,
+			final_arrow = true)
+	end
 end
 display(phase_plot)
-savefig("figures/phase_NKlim_perf.png")
+plot!(size = (600,400))
+savefig("figures/NK_model/phase_NKlim_perf.pdf")
+
+for start in starts
+	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
+	paths1 = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = 100,
+		magnitude = start[:ϵ_y], persistence = par.ρ_y, show_plot = false)
+
+
+end
+
 
 """
 Test the equilibrium conditions and step! function by confirming the steady states
@@ -255,7 +273,7 @@ s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], lower, gap = 500, s
 s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
 options.burnin_use_net = false;
 options.learning_gap = 50000;
-options.plotting_gap = 500;
+options.plotting_gap = 50000;
 options.window = 49999;
 options.plot_vars = [:π, :y, :r, :Eπ, :Ey]
 
@@ -284,7 +302,7 @@ paths = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 1000,
 	magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
 upper_stoch[:π] = paths.π[1000];
 upper_stoch[:Eπ_lead] = paths.Eπ_lead[1000];
-upper_stoch[:y] = paths.y[1000];
+upper_stoch[:y] = paths.y[1000]
 
 # Lower steady state
 lower_stoch = deepcopy(lower)
@@ -292,7 +310,7 @@ paths = irf(:ϵ_y, lower_stoch, beliefs, shock_period = 5, periods = 1000,
 	magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
 lower_stoch[:π] = paths.π[1000];
 lower_stoch[:Eπ_lead] = paths.Eπ_lead[1000];
-lower_stoch[:y] = paths.y[1000];
+lower_stoch[:y] = paths.y[1000]
 
 pyplot()
 paths1 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
@@ -300,6 +318,72 @@ paths1 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
 paths2 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
 	magnitude = -0.03, persistence = par.ρ_y, show_plot = true,
 	plot_vars=[:y,:π,:Ey, :Eπ])
+
+
+
+
+
+"""
+Plot phase diagram
+"""
+
+pyplot()
+plot_points = -1:0.001:1
+function plot_ss(plot_points)
+	ss_plot = plot(xlabel = L"y_t", xlims = (-0.07,0.07),
+	    ylabel = L"\pi_t", ylims = (-0.07, 0.07),legend=:topright)
+	plot!(plot_points, ZLB_bind_condition.(plot_points),
+		fillrange=[minimum(plot_points)*ones(len(plot_points))], fillalpha = 0.5,
+		 color = :paleturquoise1, label = "ELB")
+	plot!(plot_points,NKPC_condition.(plot_points), label = "Phillips Curve", color = :black)
+	plot!(par.y_lim:0.001:EE_kink,EE_normal_condition.(par.y_lim:0.001:EE_kink),
+	 	label = "Euler Equation", color = :green)
+	plot!(par.y_lim:0.001:EE_kink,EE_ZLB_condition.(par.y_lim:0.001:EE_kink),
+	 	label = "", color = :green)
+	plot!([par.y_lim,par.y_lim],[par.R_lim,-0.07],
+	 	label = "", color = :green)
+	return ss_plot
+end
+
+## Plot equilibrium phase diagram
+phase_plot = plot_ss(plot_points)
+initial_ss = deepcopy(central)
+starts = [(π=-0.04,y=-0.06,ϵ_y=-0.0,periods=2,arrows=[1]),
+	(π=-0.04,y=-0.027,ϵ_y=0.0,periods=15,arrows=[7]),
+	(π=-0.04,y=-0.029,ϵ_y=0.0,periods=24,arrows=[10]),
+	(π=0.0,y=-0.032,ϵ_y=0.0,periods=40,arrows=[]),
+	(π=0.0,y=-0.034,ϵ_y=0.0,periods=60,arrows=[6]),
+	(π=-0.0175,y=0.035,ϵ_y=0.0,periods=12,arrows=[]),
+	(π=0.03,y=0.035,ϵ_y=0.0,periods=12,arrows=[3]),
+	]
+
+for start in starts
+	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
+	paths1 = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = 100,
+		magnitude = start[:ϵ_y], persistence = par.ρ_y, show_plot = false)
+	if start == starts[1]
+		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:start[:periods],
+			v_points = 1:start[:periods], label = "Equilibrium paths", arrow_size = .5,
+			final_arrow = true)
+	else
+		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:start[:periods],
+			v_points = 1:start[:periods], arrow_size = .5,
+			final_arrow = true)
+	end
+
+end
+display(phase_plot)
+plot!(size = (600,400))
+savefig("figures/NK_model/NK_phase_sim.pdf")
+
+
+
+
+
+
+
+
+
 
 
 """
@@ -338,48 +422,6 @@ plot!(paths4.y, label ="Output", subplot=4);plot!(paths4.ϵ_y, label ="Shock", s
 display(irf_plot)
 savefig("figures/NK_irf_sim.png")
 
-
-"""
-Plot phase diagram
-"""
-
-
-pyplot()
-plot_points = -1:0.001:1
-ss_plot = plot(xlabel = "Output", xlims = (-0.07,0.07),
-    ylabel = "Inflation", ylims = (-0.07, 0.07),legend=:topright)
-plot!(plot_points, ZLB_bind_condition.(plot_points),
-	fillrange=[minimum(plot_points)*ones(len(plot_points))], fillalpha = 0.5,
-	 color = :paleturquoise1, label = "ZLB")
-plot!(plot_points,NKPC_condition.(plot_points), label = "Phillips Curve", color = :black)
-plot!(par.y_lim:0.001:EE_kink,EE_normal_condition.(par.y_lim:0.001:EE_kink),
- 	label = "Euler Equation", color = :green)
-plot!(par.y_lim:0.001:EE_kink,EE_ZLB_condition.(par.y_lim:0.001:EE_kink),
- 	label = "", color = :green)
-plot!([par.y_lim,par.y_lim],[par.R_lim,-0.07],
- 	label = "", color = :green)
-display(ss_plot)
-
-## Plot perfect foresight paths
-phase_plot = ss_plot
-initial_ss = deepcopy(central)
-starts = [(π=-0.04,y=-0.06,ϵ_y=-0.0,periods=2,arrows=[1]),
-	(π=-0.04,y=-0.018,ϵ_y=0.0,periods=43,arrows=[27,32]),
-	(π=-0.04,y=-0.005,ϵ_y=0.0,periods=43,arrows=[]),
-	(π=0.035,y=0.02,ϵ_y=0.0,periods=12,arrows=[6]),
-	(π=0.0,y=-0.039,ϵ_y=0.0,periods=60,arrows=[58]),
-	(π=0.0,y=-0.015,ϵ_y=0.0,periods=100,arrows=[18,90]),
-	(π=-0.0175,y=0.05,ϵ_y=0.0,periods=60,arrows=[35])
-	]
-for start in starts
-	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths1 = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = 100,
-		magnitude = start[:ϵ_y], persistence = par.ρ_y, show_plot = false)
-	phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 1:start[:periods],
-		v_points = 1:start[:periods])
-end
-display(phase_plot)
-savefig("figures/NK_phase_sim.png")
 
 
 

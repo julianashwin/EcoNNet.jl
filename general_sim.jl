@@ -337,7 +337,7 @@ Real sink
 @everywhere par = (ϕ_pp = 0.95, ϕ_py = 0.5,
 	ϕ_yy = 0.6, ϕ_yp = 0.1,
     α_2 = 0.0, α_3 = 0.1125,
-	ρ_y = 0.0, σ_y = 0.05, ρ_p = 0.95, σ_p = 0.05);
+	ρ_y = 0.0, σ_y = 0.2, ρ_p = 0.95, σ_p = 0.05);
 
 ystar = 0.0
 a_11 = (1 - (par.ϕ_py - 3*ystar^2*par.α_3)*par.ϕ_yp)/par.ϕ_pp
@@ -370,7 +370,7 @@ function plot_ss(plot_points)
 	ss_plot = plot(xlabel = L"y_{t-1}", xlims = (minimum(plot_points),maximum(plot_points)),
     	ylabel = L"p_t", ylims = (-10.0,10.0),legend=:bottomright, yguidefontrotation=-90)
 		plot!(plot_points,p_condition.(plot_points), label = "p condition", color = :black)
-		display(plot!(y_condition.(2.5.*plot_points),2.5.*plot_points, label = "y condition", color = :green))
+		display(plot!(y_condition.(3.5.*plot_points),3.5.*plot_points, label = "y condition", color = :green))
 		# Plot perfect foresight paths
 	return ss_plot
 end
@@ -436,13 +436,13 @@ plot(s.ϵ_p[1:1000])
 noise_y = par.σ_y*randn(nrow(s))
 s.ϵ_y = simulate_ar(par.ρ_y, par.σ_y, options.N, noise_y)
 plot(s.ϵ_y[1:1000])
-s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], lower, gap = 500, steadystate_alt = upper);
+s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], upper, gap = 500, steadystate_alt = upper);
 s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
 @time beliefs, s = simulate_learning((options.burnin+1):options.N, s, beliefs, indices, options)
 
 # Repeat learning with new shocks
 noise_p = par.σ_p*randn((options.N - options.burnin)) +
-	alternating_shocks((options.N - options.burnin), gap=400, mag = 1.0)
+	alternating_shocks((options.N - options.burnin), gap=300, mag = 1.0)
 noise_y = par.σ_y*randn((options.N - options.burnin))
 gr() # Set GR backend for plots as it's the fastest
 s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:]
@@ -478,10 +478,12 @@ Plot phase diagram
 # Solution phase diagram
 pyplot()
 plot_ss(plot_points)
+#plot!(ylims = (-12.0,12.0))
 initial_ss = deepcopy(central)
-starts = [(p=0.0,y=4.0,periods=5,arrows=[2]),
-	(p=0.0,y=-4.0,periods=5,arrows=[2]),
-	(p=0.0,y=0.0,periods=5,arrows=[2]),
+starts = [#(p=0.0,y=2.0,periods=15,arrows=[2]),
+	(p=5.0,y=3.5,periods=15,arrows=[2]),
+	(p=-5.0,y=-3.5,periods=15,arrows=[2]),
+	#(p=-3.0,y=0.0,periods=15,arrows=[2]),
 	#(p=0.0,y=-1.0,periods=100,arrows=[25]),
 	#(p=5.0,y=0.0,periods=100,arrows=[25]),
 	#(p=-5.0,y=-0.0,periods=100,arrows=[25]),
