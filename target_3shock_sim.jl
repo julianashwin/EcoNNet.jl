@@ -20,24 +20,26 @@ Expectations are denoted by a capital E prefix,
 leads and lags are specified as a `_lead` or `_lag` suffix
 """
 
-@everywhere options = EcoNNetOptions(infoset = [:π_lag, :y_lag, :ϵ_π, :ϵ_y],
+@everywhere options = EcoNNetOptions(
+	infoset = [:ϵ_π, :ϵ_y],
     expectations = [:Eπ,:Ey,:Eπ_lead],
     endogenous = [:π, :y],
     exogenous = [:ϵ_π,:ϵ_y],
-    states = [:y_lag, :ϵ_π, :ϵ_y],
+    states = [:ϵ_π, :ϵ_y],
 	auxiliary = [:r],
-    N = 500000, num_nodes = 32, activation = relu, window = 40000,
-	burnin = 50000, learning_gap = 10000, plotting_gap = 10000)
+    N = 50000, num_nodes = 8, activation = relu, window = 500,
+	burnin = 5000, learning_gap = 1000, plotting_gap = 100)
 
 @everywhere beliefs = initialise_beliefs(options)
+params(beliefs)
 
 """
 Define the parameters as a Named Tuple.
 """
 
-@everywhere par = (β = 0.95, κ = 0.05, η = 0.95, σ = 0.25,
-	ϕ_π = 0.5, π_star = 1.0, α = 0.75,
-	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.5, σ_π = 0.2);
+@everywhere par = (β = 1, κ = 1, η = 0, σ = 1,
+	ϕ_π = 0, π_star = 2.0, α = 1.5,
+	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.0, σ_π = 0.0);
 
 """
 State the equilibrium conditions of the model as a function which returns
@@ -48,9 +50,9 @@ State the equilibrium conditions of the model as a function which returns
     x::Array{Float64,1},states_input::Array{Float64,1},predictions_input::Array{Float64,1})
     # Manually unpack the states
     #p_lag::Float64 = states_input[1]
-    y_lag::Float64 = states_input[1]
-    ϵ_π::Float64 = states_input[2]
-	ϵ_y::Float64 = states_input[3]
+    y_lag::Float64 = 0.#states_input[1]
+    ϵ_π::Float64 = states_input[1]
+	ϵ_y::Float64 = states_input[2]
     # and the predictions
     #Ep::Float64 = predictions_input[1]
     #Ey::Float64 = predictions_input[2]
@@ -117,7 +119,7 @@ Lagged values which appear as state variables need not be included.
 @everywhere variables = Symbol.(cat(Vector(options.exogenous),
     Vector(options.endogenous),outputnames(options),
     Vector(options.expectations),Vector(options.auxiliary), dims = 1));
-s = DataFrame(ones(options.N, length(variables)), variables);
+s = DataFrame(zeros(options.N, length(variables)), variables);
 @everywhere indices = extract_indices(options, variables);
 
 
@@ -163,9 +165,9 @@ upper[:Eπ_lead] = upper[:π];
 # central steady state
 sstates = nlsolve(steady_states, [0.0, 0.0])
 central = Dict{Symbol,Float64}();
-central[:π] = sstates.zero[1];
-central[:y] = sstates.zero[2];
-central[:Eπ_lead] = central[:π];
+central[:π] = 0.;
+central[:y] = 0.;
+central[:Eπ_lead] = 0.;
 # lower steady state
 lower = Dict{Symbol,Float64}();
 sstates = nlsolve(steady_states, [-2.0, -2.0])
@@ -191,7 +193,8 @@ function plot_ss(plot_points)
 	# Plot NKPC condition
 	plot!(plot_points,NKPC_condition.(plot_points), label = "Phillips Curve", color = :black)
 	# Plot IS condition
-	plot!(IS_condition.(plot_points),plot_points, label = "IS Curve", color = :green)
+	plot!(IS_condition.(plot_points),plot_points, label = "IS Curve", color = :green,
+		linestyle = :dot)
 	# Fill in indeterminate area
 	plot!(plot_points, par.π_star*ones(len((plot_points))),
 		fillrange=[-par.π_star*ones(len(plot_points))], fillalpha = 0.5,
@@ -231,7 +234,7 @@ savefig("figures/pw_linear/perf_phase_pistar"*rep_pnt(par.π_star)*
 Test the equilibrium conditions and step! function by confirming the steady states
 """
 
-s = initialise_df(s, upper);
+s = initialise_df(s, central);
 s = initialise_df(s, ss);
 t = 3;
 if len(indices.outputindex_current)>0
@@ -250,42 +253,53 @@ Initialise beliefs by training on (some of the) steady state(s)
 """
 
 @everywhere beliefs = initialise_beliefs(options)
-s = initialise_df(s, lower, gap = 500, steadystate_alt = upper)
+s = initialise_df(s, ss) # gap = 500, steadystate_alt = upper)
+s = initialise_df(s, central) # gap = 500, steadystate_alt = upper)
 @time beliefs = learn!(beliefs, s, options.N, options, indices, loss)
+display(params(beliefs))
+
+
+"
+REE
+"
+
+ϵ = 10
+A = ((1-2*par.α)*par.α*par.π_star)/(2*par.α^2 - par.α - 1)
+B = (-2*par.α^2*par.π_star + 3*par.α*par.π_star - 2*par.α*ϵ + 2*ϵ
+	)/(-2*par.α^2 + par.α + 1)
+C = (-2*par.α^2*par.π_star + par.α*par.π_star - 2*par.α*ϵ + 2*ϵ
+	)/(-2*par.α^2 + par.α + 1)
 
 
 """
 Run learning simulation
 """
-noise_π = par.σ_π*randn(nrow(s))
-s.ϵ_π = simulate_ar(par.ρ_π, par.σ_π, options.N, noise_π)
-noise_y = par.σ_y*randn(nrow(s))
-s.ϵ_y = simulate_ar(par.ρ_y, par.σ_y, options.N, noise_y)
-plot(s.ϵ_y[1:200])
-options.burnin = 100000;
-s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], lower, gap = 500, steadystate_alt = upper);
-s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
-options.burnin_use_net = false;
-options.learning_gap = 50000;
-options.plotting_gap = 50000;
-options.window = 49999;
+options.burnin_use_net = true;
+options.learning_gap = 10;
+options.plotting_gap = 50;
+options.window = 499;
 options.plot_vars = [:π, :y, :Eπ, :Ey]
 
-# Simulate the learning for a set number of periods
-noise_π = par.σ_π*randn((options.N - options.burnin))
-noise_y = par.σ_y*randn((options.N - options.burnin))
+
+P = [0.5 0.25 0.25; 0.25 0.5 0.25; 0.25 0.25 0.5]
+P = [0.4 0.2 0.2 0.2; 0.2 0.4 0.2 0.2; 0.2 0.2 0.4 0.2; 0.2 0.2 0.2 0.4]
+mc = MarkovChain(P, [-15, -5, 5, 15])
+simulate(mc, 100, init = 2)
+
 gr() # Set GR backend for plots as it's the fastest
+# Replace the first shocks with the last ones from the previous time
 s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:]
-s.ϵ_π[(options.burnin+1):options.N] = simulate_ar(par.ρ_π, par.σ_π, options.N - options.burnin, noise_π)
-s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
+s.ϵ_π = simulate(mc, options.N, init = 2)
+s.ϵ_y = zeros(options.N)
 @time beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
 
 # Plot simulated time series
 pyplot()
-plot_range = (500000-5999):(500000-4999)
-plot(layout=(2,1),legend = false,  link = :x)
+plot_range = (12350-99):(12350)
+plot(layout=(3,1),legend = false,  link = :x)
 plot!(s.π[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
 plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
+plot!(s.ϵ_π[plot_range], subplot = 3, ylabel = L"\epsilon_t", yguidefontrotation=-90, xlabel = "Periods")
 plot!(size = (600,300))
 savefig("figures/pw_linear/sim_series_pistar"*rep_pnt(par.π_star)*
 	"_alpha"*rep_pnt(par.α)*".pdf")

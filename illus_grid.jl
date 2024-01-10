@@ -232,6 +232,7 @@ q_y = p_y
 N = 21
 ψ_y = sqrt(par.σ_y^2/(1 - par.ρ_y^2))*sqrt(N-1)
 ϵ_y_range, ϵ_y_kernel = Rouwenhorst(p_y,q_y,ψ_y,N)
+ϵ_y_range, ϵ_y_kernel = Rouwenhorst(p_y,q_y,N)
 gr()
 heatmap(ϵ_y_range,
     ϵ_y_range, ϵ_y_kernel,
