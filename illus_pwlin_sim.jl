@@ -141,6 +141,16 @@ function IS_condition(π)
     y = -(par.σ/(1-par.η))*(Taylor_condition(π) - π)
 end
 
+
+
+
+"""
+Find the steady states numericall
+"""
+# Define a steady state function to numerically solve
+"""
+
+"""
 function steady_states(F::Array{Float64,1},x::Array{Float64,1})
     π::Float64 = x[1]
     y::Float64 = x[2]
@@ -149,7 +159,6 @@ function steady_states(F::Array{Float64,1},x::Array{Float64,1})
     F[2]::Float64 = par.η*y - par.σ*(Taylor_condition(π) - π) - y
     return F
 end
-
 # Exogenous processes
 ss = Dict{Symbol,Float64}()
 ss[:ϵ_π] = 0.0
@@ -287,8 +296,8 @@ plot(layout=(2,1),legend = false,  link = :x)
 plot!(s.π[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
 plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
 plot!(size = (600,300))
-savefig("figures/pw_linear/sim_series_pistar"*rep_pnt(par.π_star)*
-	"_alpha"*rep_pnt(par.α)*".pdf")
+#savefig("figures/pw_linear/sim_series_pistar"*rep_pnt(par.π_star)*
+#	"_alpha"*rep_pnt(par.α)*".pdf")
 
 
 export_df = s[options.N-99999:options.N,:]
@@ -297,8 +306,13 @@ rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
 export_df.r = Taylor_condition.(export_df.pi)
 export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r]]
 
-CSV.write("estimation/pwlin/pwlin_sim_pistar"*rep_pnt(par.π_star)*".csv",
-	export_df)
+#CSV.write("estimation/pwlin/pwlin_sim_pistar"*rep_pnt(par.π_star)*".csv",
+#	export_df)
+
+#save("networks/pwlin_eta"*rep_pnt(par.η)*".jld2", "beliefs", beliefs)
+#beliefs = load("networks/pwlin_eta"*rep_pnt(par.η)*".jld2", "beliefs", "beliefs");
+
+
 
 """
 Plot phase diagram
@@ -309,7 +323,7 @@ plot_ss(plot_points)
 initial_ss = deepcopy(central)
 starts = [(π=3.0,y=3.0,periods=100,arrows=[10]),
 	(π=-3.,y=-3.,periods=100,arrows=[10]),
-	(π=0.1,y=0.1,periods=100,arrows=[22, 65]),
+	(π=0.5,y=0.5,periods=100,arrows=[22, 65]),
 	(π=-0.25,y=-0.25,periods=100,arrows=[22, 65]),
 	#(π=1.0,y=1.0,periods=100,arrows=[9]),
 	#(π=-1.0,y=1.0,periods=100,arrows=[9]),
@@ -331,125 +345,75 @@ for start in starts
 		end
 end
 plot!(size = (600,400))
-savefig("figures/pw_linear/phase_nnet_pistar"*rep_pnt(par.π_star)*
-	"_alpha"*rep_pnt(par.α)*".pdf")
-
-
-
-
-
-
+#savefig("figures/pw_linear/phase_nnet_pistar"*rep_pnt(par.π_star)*
+#	"_alpha"*rep_pnt(par.α)*".pdf")
 
 
 """
-Smaller π_star (0.5)
+Compare PLM and ALM
 """
+s.Eπ_error = s.Eπ-s.π
+s.Ey_error = s.Ey-s.y
+s.Eπ_lead_error = vcat((s.Eπ_lead[1:(options.N-1)]-s.π[2:(options.N)]),[0.])
+plot(s.Eπ_lead_error)
 
-@everywhere par = (β = 0.95, κ = 0.05, η = 0.95, σ = 0.25,
-	ϕ_π = 0.5, π_star = 0.5, α = 0.75,
-	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.5, σ_π = 0.2);
+plot_range=410001:500000
+y_range = Array(-6.0:0.05:6.0)
+π_range= Array(-3.5:0.05:3.5)
+heatmap_df = deepcopy(s[plot_range,:])
+heatmap_df.y_lag = s[plot_range.-1,:y]
+heatmap_df.y_grid = map(x -> findnearest(y_range,x), Array(heatmap_df.y_lag))
+heatmap_df.π_grid = map(x -> findnearest(π_range,x), Array(heatmap_df.π))
 
-"""
-Perfect foresight phase
-"""
-plot_points = -4.0:0.01:4.0;
-plot_ss(plot_points)
-initial_ss = deepcopy(central)
-starts = [(π=-1.5,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=1.5,y=3.5,periods=100,arrows=[10,50,98]),
-	(π=-2.0,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=2.0,y=3.5,periods=100,arrows=[10,50,98]),
-	(π=-1.85,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=1.85,y=3.5,periods=100,arrows=[10,50,98])
-	]
-for start in starts
-	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths1 = pf_path(initial_ss, periods = start[:periods])
+heatmap_mat = zeros(len(π_range),len(y_range))
+prog = Progress(len(π_range), dt = 1, desc="Creating heatmap: ")
+for ππ in 1:len(π_range)
+	for yy in 1:len(y_range)
+		instances = (heatmap_df[:,:π_grid].==π_range[ππ]).* (heatmap_df[:,:y_grid].==y_range[yy])
+		heatmap_mat[ππ,yy] = sum(instances)
+	end
+	next!(prog)
+end
 
-	if start == starts[1]
-		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 1:(start[:periods]-1), label = "Perfect foresight paths", arrow_size = .5)
-	else
-		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 1:(start[:periods]-1), label = "", arrow_size = .5)
+heatmap(y_range,π_range,heatmap_mat, c=:coolwarm,
+	xlabel= L"y_{t-1}",ylabel=L"\pi_t")
+plot!(size=(800,300))
+#savefig("figures/heatmap_illus_sim.pdf")
+
+
+avg_error = zeros(len(y_range))
+for yy in 1:len(y_range)
+	short_df = heatmap_df[1:89999,:]
+	instances = Array(short_df[:,:y_grid].==y_range[yy])
+	errors = short_df[instances,:Eπ_lead_error]
+	avg_error[yy] = mean(errors)
+	if isnan(avg_error[yy])
+		avg_error[yy] = 0.0
 	end
 end
-plot!(size = (600,400))
-savefig("figures/pw_linear/perf_phase_pistar"*rep_pnt(par.π_star)*
-	"_alpha"*rep_pnt(par.α)*".pdf")
-
-
-"""
-Re-train beliefs
-"""
-@everywhere beliefs = initialise_beliefs(options)
-
-# Simulate the learning for a set number of periods
-noise_π = par.σ_π*randn((options.N - options.burnin))
-noise_y = par.σ_y*randn((options.N - options.burnin))
-gr() # Set GR backend for plots as it's the fastest
-s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:]
-s.ϵ_π[(options.burnin+1):options.N] = simulate_ar(par.ρ_π, par.σ_π, options.N - options.burnin, noise_π)
-s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
-@time beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
-
-# Plot simulated time series
+# Plot the distribution of forecast errors
 pyplot()
-plot_range = (500000-6999):(500000-4999)
-plot(layout=(2,1),legend = false,  link = :x)
-plot!(s.π[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
-plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
-plot!(size = (600,300))
-savefig("figures/pw_linear/sim_series_pistar"*rep_pnt(par.π_star)*
-	"_alpha"*rep_pnt(par.α)*".pdf")
+plot(layout = (2,1), link = :x)
+heatmap!(y_range,π_range,heatmap_mat, subplot=1, c=[:white,:blue],
+	ylabel=L"\pi_{t}",colorbar =:none,yguidefontrotation=-90)
+plot!(y_range, avg_error,subplot=2, xlabel= L"y_{t-1}", ylabel= L"Avg. [E \pi_{t+1} - \pi_{t+1}]",
+	legend=:false,yguidefontrotation=0)
+plot!(size=(600,400))
+savefig("figures/heatmap_errors_pwlin_sim.pdf")
+# Calculate the R squared
+Rsq_π = 1 - var(heatmap_df.π-heatmap_df.Eπ)/var(heatmap_df.π)
+Rsq_y = 1 - var(heatmap_df.y-heatmap_df.Ey)/var(heatmap_df.y)
 
 
+pvals = DHM_test(s, 5000:500:500000, 500, hvars = [:ϵ_π], include_const = true);
 
-export_df = s[options.N-99999:options.N,:]
-rename!(export_df, replace.(names(export_df), "π" => "pi"))
-rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
-export_df.r = Taylor_condition.(export_df.pi)
-export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r]]
+using HypothesisTests
 
-CSV.write("estimation/pwlin/pwlin_sim_pistar"*rep_pnt(par.π_star)*".csv",
-	export_df)
-
-
-"""
-Plot phase diagram
-"""
-
-pyplot()
-plot_ss(plot_points)
-initial_ss = deepcopy(central)
-periods = 200
-starts = [(π=3.0,y=3.0,periods=periods,arrows=[10,periods-100]),
-	(π=-3.,y=-3.,periods=periods,arrows=[10,periods-100]),
-	(π=0.1,y=0.1,periods=periods,arrows=[102,periods-2]),
-	(π=-0.1,y=-0.1,periods=periods,arrows=[102,periods-2]),
-	#(π=1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=1.0,y=-1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=-1.0,periods=100,arrows=[9])
-	]
-for start in starts
-	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = start[:periods],
-		magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
-	paths.y_lag = cat(start[:y],paths.y[1:(start.periods -1 )],dims=1)
-	if start == starts[1]
-		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 2:(start[:periods]), label = "Equilibrium paths", arrow_size = .5,
-			final_arrow = true)
-	else
-		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows].-5, h_points = 2:(start[:periods]),
-			v_points = 2:start[:periods], arrow_size = .5, final_arrow = true)
-		end
-end
-plot!(size = (600,400))
-savefig("figures/pw_linear/phase_nnet_pistar"*rep_pnt(par.π_star)*
-	"_alpha"*rep_pnt(par.α)*".pdf")
-
+rrr = 490000:500000
+CorrelationTest(s.Eπ_lead_error[rrr],s.y[rrr.-1])
+CorrelationTest(s.Eπ_lead_error[rrr],s.ϵ_π[rrr.-1])
+CorrelationTest(s.Eπ_lead_error[rrr],s.ϵ_y[rrr.-1])
+pvalue(CorrelationTest(s.Eπ_lead_error[rrr],s.y[rrr.-1]))
 
 
 

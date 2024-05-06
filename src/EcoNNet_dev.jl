@@ -10,7 +10,7 @@ using Flux, Distributed, SharedArrays, JLD, NLsolve, ProgressMeter
 using Flux: throttle, params, mse, glorot_uniform, @epochs, Chain
 using IterTools: ncycle, NCycle
 using NLsolve: SolverResults
-using DataFrames, Random, Atom, Juno, DataFramesMeta
+using DataFrames, Random, Atom, Juno, DataFramesMeta, InvertedIndices
 using Plots, Plots.PlotMeasures
 
 
@@ -25,3 +25,4 @@ include("step_fns.jl")
 include("grid_approach.jl")
 include("sim_approach.jl")
 include("plotting.jl")
+include("dhm.jl")

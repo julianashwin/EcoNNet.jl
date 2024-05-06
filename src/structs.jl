@@ -11,7 +11,7 @@ Mutable structure for options
     window::Int64 = 5000;
     NNet::Bool = true;
     init_weights = glorot_uniform;
-    optim = ADAM;
+    optim = ADAM();
     activation = σ;
     hidden_layers::Int64 = 1;
     train_split::Array{Float64,1} = [1.0, 0.0, 0.0];

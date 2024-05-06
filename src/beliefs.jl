@@ -5,6 +5,7 @@ Functions and objects related to the beliefs neural network
 
 
 """
+    initialise_beliefs(options::EcoNNetOptions)
 Define the beliefs, predict, loss and optim function.
 The two options supported here are:
 (1) A feedforward neural network, provided by the Flux.jl packages
@@ -17,8 +18,8 @@ function initialise_beliefs(options::EcoNNetOptions)
 	    """
 		if options.hidden_layers == 1
 	    	global beliefs = Chain(
-	        	Dense(len(options.infoset), options.num_nodes, options.activation, initW = options.init_weights),
-	        	Dense(options.num_nodes, len(options.expectations), initW = options.init_weights))
+	        	Dense(len(options.infoset), options.num_nodes, options.activation, init = options.init_weights),
+	        	Dense(options.num_nodes, len(options.expectations), bias=false, init = options.init_weights))
 		elseif options.hidden_layers == 2
 			global beliefs = Chain(
 	        	Dense(len(options.infoset), options.num_nodes, options.activation, initW = options.init_weights),
@@ -44,6 +45,7 @@ end
 
 
 """
+    loss(x, y)
 Loss function for training the network/linear regression
 """
 function loss(x, y)
@@ -52,6 +54,7 @@ end
 
 
 """
+    WMSE(x::Array{Float64,2}, y::Array{Float64,2}, weights::Array{Float64,2})
 Function that defines weighted mean square error loss for beliefs
 	Need to specify weights::Array{Float64,2}(size(outputs))
 """
@@ -131,7 +134,7 @@ function learn!(beliefs::Chain, s::DataFrame, tt::Int64, options::EcoNNetOptions
 	prog = Progress(options.max_iter, dt = 1, desc="Progress: ")
 	for ii in 1:options.max_iter
 
-		Flux.train!(loss, params(beliefs), df, options.optim())
+		Flux.train!(loss, params(beliefs), df, options.optim)
 
 		if options.train_split[1] < 1.0
 			current_loss = loss(val_inputs, val_outputs)

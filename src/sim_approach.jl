@@ -1,4 +1,6 @@
-
+"""
+Functions that run the simulation approach for neural network learning
+"""
 
 
 
