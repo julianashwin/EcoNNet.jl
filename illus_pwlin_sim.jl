@@ -43,7 +43,6 @@ Define the parameters as a Named Tuple.
 State the equilibrium conditions of the model as a function which returns
     a vector of zeros
 """
-
 @everywhere function equilibrium_conditions_fast(F::Array{Float64,1},
     x::Array{Float64,1},states_input::Array{Float64,1},predictions_input::Array{Float64,1})
     # Manually unpack the states
@@ -122,9 +121,8 @@ s = DataFrame(ones(options.N, length(variables)), variables);
 
 
 """
-Calculate steady states
+Plot steady state conditions
 """
-
 function NKPC_condition(y)
     π = par.κ/(1-par.β)*y
 end
@@ -141,15 +139,41 @@ function IS_condition(π)
     y = -(par.σ/(1-par.η))*(Taylor_condition(π) - π)
 end
 
+pyplot()
+plot_points = -4.0:0.01:4.0;
+function plot_ss(plot_points)
+	# Set up plot
+	ss_plot = plot(xlabel = L"y_{t-1}", xlims = (minimum(plot_points),maximum(plot_points)),
+    	ylabel = L"\pi_t", ylims = (minimum(plot_points),maximum(plot_points)),legend=:bottomright, yguidefontrotation=-90)
+	# Plot NKPC condition
+	plot!(plot_points,NKPC_condition.(plot_points), label = "Phillips Curve", color = :black)
+	# Plot IS condition
+	plot!(IS_condition.(plot_points),plot_points, label = "IS Curve", color = :green)
+	# Fill in indeterminate area
+	plot!(plot_points, par.π_star*ones(len((plot_points))),
+		fillrange=[-par.π_star*ones(len(plot_points))], fillalpha = 0.5,
+		 color = :paleturquoise1, label = L"\pi_t < \pi^*")
+	display(plot!(plot_points, -par.π_star*ones(len((plot_points))),
+		color = :paleturquoise1, label = false))
+	return ss_plot
+end
+
+par = @set par.π_star = 1.0
+plot_ss(plot_points)
+
+par = @set par.η = 0.95
+par = @set par.σ = 0.25
+par = @set par.κ = 0.05
+plot_ss(plot_points)
 
 
 
 """
-Find the steady states numericall
+Find the steady states numerically
 """
 # Define a steady state function to numerically solve
 """
-
+Function that gives zero when x (inflation, output) is at a deterministic steady state
 """
 function steady_states(F::Array{Float64,1},x::Array{Float64,1})
     π::Float64 = x[1]
@@ -188,28 +212,8 @@ s = initialise_df(s, lower, gap = 2, steadystate_alt = upper)
 
 
 """
-Plot steady state conditions and perfect foresight paths
+Plot perfect foresight paths
 """
-#using Plotly, PlotlyJS
-pyplot()
-plot_points = -4.0:0.01:4.0;
-function plot_ss(plot_points)
-	# Set up plot
-	ss_plot = plot(xlabel = L"y_{t-1}", xlims = (minimum(plot_points),maximum(plot_points)),
-    	ylabel = L"\pi_t", ylims = (minimum(plot_points),maximum(plot_points)),legend=:bottomright, yguidefontrotation=-90)
-	# Plot NKPC condition
-	plot!(plot_points,NKPC_condition.(plot_points), label = "Phillips Curve", color = :black)
-	# Plot IS condition
-	plot!(IS_condition.(plot_points),plot_points, label = "IS Curve", color = :green)
-	# Fill in indeterminate area
-	plot!(plot_points, par.π_star*ones(len((plot_points))),
-		fillrange=[-par.π_star*ones(len(plot_points))], fillalpha = 0.5,
-		 color = :paleturquoise1, label = L"\pi_t < \pi^*")
-	display(plot!(plot_points, -par.π_star*ones(len((plot_points))),
-		color = :paleturquoise1, label = false))
-	return ss_plot
-end
-
 #for tt in 1:50
 plot_ss(plot_points)
 initial_ss = deepcopy(central)
@@ -217,6 +221,8 @@ starts = [(π=-1.8,y=-3.5,periods=100,arrows=[10,50,98]),
 	(π=1.8,y=3.5,periods=100,arrows=[10,50,98]),
 	(π=-2.2,y=-3.5,periods=100,arrows=[10,50,98]),
 	(π=2.2,y=3.5,periods=100,arrows=[10,50,98]),
+	#(π=-0.2,y=-0.2,periods=100,arrows=[20,50,98]),
+	#(π=0.2,y=0.2,periods=100,arrows=[20,50,98]),
 	(π=-2.5,y=-3.5,periods=100,arrows=[10,50,98]),
 	(π=2.5,y=3.5,periods=100,arrows=[10,50,98])
 	]
@@ -232,8 +238,8 @@ for start in starts
 	end
 end
 plot!(size = (600,400))
-savefig("figures/pw_linear/perf_phase_pistar"*rep_pnt(par.π_star)*
-	"_alpha"*rep_pnt(par.α)*".pdf")
+#savefig("figures/pw_linear/perf_phase_pistar"*rep_pnt(par.π_star)*#
+#	"_alpha"*rep_pnt(par.α)*".pdf")
 
 
 """
@@ -274,7 +280,7 @@ plot(s.ϵ_y[1:200])
 options.burnin = 100000;
 s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], lower, gap = 500, steadystate_alt = upper);
 s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
-options.burnin_use_net = false;
+options.burnin_use_net = true;
 options.learning_gap = 50000;
 options.plotting_gap = 50000;
 options.window = 49999;
@@ -315,49 +321,19 @@ export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r]]
 
 
 """
-Plot phase diagram
-"""
-
-pyplot()
-plot_ss(plot_points)
-initial_ss = deepcopy(central)
-starts = [(π=3.0,y=3.0,periods=100,arrows=[10]),
-	(π=-3.,y=-3.,periods=100,arrows=[10]),
-	(π=0.5,y=0.5,periods=100,arrows=[22, 65]),
-	(π=-0.25,y=-0.25,periods=100,arrows=[22, 65]),
-	#(π=1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=1.0,y=-1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=-1.0,periods=100,arrows=[9])
-	]
-for start in starts
-	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = start[:periods],
-		magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
-	paths.y_lag = cat(start[:y],paths.y[1:(start.periods -1 )],dims=1)
-	if start == starts[1]
-		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 2:(start[:periods]), label = "Equilibrium paths", arrow_size = .5,
-			final_arrow = true)
-	else
-		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows].-5, h_points = 2:(start[:periods]),
-			v_points = 2:start[:periods], arrow_size = .5, final_arrow = true)
-		end
-end
-plot!(size = (600,400))
-#savefig("figures/pw_linear/phase_nnet_pistar"*rep_pnt(par.π_star)*
-#	"_alpha"*rep_pnt(par.α)*".pdf")
-
-
-"""
 Compare PLM and ALM
 """
 s.Eπ_error = s.Eπ-s.π
 s.Ey_error = s.Ey-s.y
+s[:,:y_lag] .= 0.0
+s.y_lag[2:options.N] = s.y[1:(options.N-1)]
 s.Eπ_lead_error = vcat((s.Eπ_lead[1:(options.N-1)]-s.π[2:(options.N)]),[0.])
 plot(s.Eπ_lead_error)
 
 plot_range=410001:500000
+histogram(s.π[plot_range], label = "Inflation")
+histogram(s.y[plot_range], label = "Output", color = :red)
+
 y_range = Array(-6.0:0.05:6.0)
 π_range= Array(-3.5:0.05:3.5)
 heatmap_df = deepcopy(s[plot_range,:])
@@ -405,14 +381,19 @@ Rsq_π = 1 - var(heatmap_df.π-heatmap_df.Eπ)/var(heatmap_df.π)
 Rsq_y = 1 - var(heatmap_df.y-heatmap_df.Ey)/var(heatmap_df.y)
 
 
-pvals = DHM_test(s, 5000:500:500000, 500, hvars = [:ϵ_π], include_const = true);
+pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:y_lag], include_const = true);
+pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:ϵ_π], include_const = true);
+pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:ϵ_y], include_const = true);
+pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:y_lag, :ϵ_π, :ϵ_y], include_const = true);
+
 
 using HypothesisTests
 
 rrr = 490000:500000
 CorrelationTest(s.Eπ_lead_error[rrr],s.y[rrr.-1])
-CorrelationTest(s.Eπ_lead_error[rrr],s.ϵ_π[rrr.-1])
-CorrelationTest(s.Eπ_lead_error[rrr],s.ϵ_y[rrr.-1])
+CorrelationTest(s.Eπ_lead_error[rrr],s.ϵ_π[rrr])
+CorrelationTest(s.Eπ_lead_error[rrr],s.ϵ_y[rrr])
+CorrelationTest(s.Eπ_lead_error[rrr.-1],s.ϵ_π[rrr])
 pvalue(CorrelationTest(s.Eπ_lead_error[rrr],s.y[rrr.-1]))
 
 
@@ -423,6 +404,45 @@ pvalue(CorrelationTest(s.Eπ_lead_error[rrr],s.y[rrr.-1]))
 
 
 
+
+
+
+
+
+
+"""
+Plot phase diagram
+"""
+
+pyplot()
+plot_ss(plot_points)
+initial_ss = deepcopy(central)
+starts = [(π=3.0,y=3.0,periods=100,arrows=[10]),
+	(π=-3.,y=-3.,periods=100,arrows=[10]),
+	(π=0.5,y=0.5,periods=100,arrows=[22, 65]),
+	(π=-0.25,y=-0.25,periods=100,arrows=[22, 65]),
+	#(π=1.0,y=1.0,periods=100,arrows=[9]),
+	#(π=-1.0,y=1.0,periods=100,arrows=[9]),
+	#(π=1.0,y=-1.0,periods=100,arrows=[9]),
+	#(π=-1.0,y=-1.0,periods=100,arrows=[9])
+	]
+for start in starts
+	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
+	paths = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = start[:periods],
+		magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
+	paths.y_lag = cat(start[:y],paths.y[1:(start.periods -1 )],dims=1)
+	if start == starts[1]
+		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 2:(start[:periods]), label = "Equilibrium paths", arrow_size = .5,
+			final_arrow = true)
+	else
+		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows].-5, h_points = 2:(start[:periods]),
+			v_points = 2:start[:periods], arrow_size = .5, final_arrow = true)
+		end
+end
+plot!(size = (600,400))
+#savefig("figures/pw_linear/phase_nnet_pistar"*rep_pnt(par.π_star)*
+#	"_alpha"*rep_pnt(par.α)*".pdf")
 
 
 

@@ -19,7 +19,7 @@ function initialise_beliefs(options::EcoNNetOptions)
 		if options.hidden_layers == 1
 	    	global beliefs = Chain(
 	        	Dense(len(options.infoset), options.num_nodes, options.activation, init = options.init_weights),
-	        	Dense(options.num_nodes, len(options.expectations), bias=false, init = options.init_weights))
+	        	Dense(options.num_nodes, len(options.expectations), init = options.init_weights))
 		elseif options.hidden_layers == 2
 			global beliefs = Chain(
 	        	Dense(len(options.infoset), options.num_nodes, options.activation, initW = options.init_weights),
