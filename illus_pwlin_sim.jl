@@ -20,7 +20,7 @@ Expectations are denoted by a capital E prefix,
 leads and lags are specified as a `_lead` or `_lag` suffix
 """
 
-@everywhere options = EcoNNetOptions(infoset = [:π_lag, :y_lag, :ϵ_π, :ϵ_y],
+@everywhere options = EcoNNetOptions(infoset = [:y_lag, :ϵ_π, :ϵ_y],
     expectations = [:Eπ,:Ey,:Eπ_lead],
     endogenous = [:π, :y],
     exogenous = [:ϵ_π,:ϵ_y],
@@ -43,6 +43,7 @@ Define the parameters as a Named Tuple.
 State the equilibrium conditions of the model as a function which returns
     a vector of zeros
 """
+
 @everywhere function equilibrium_conditions_fast(F::Array{Float64,1},
     x::Array{Float64,1},states_input::Array{Float64,1},predictions_input::Array{Float64,1})
     # Manually unpack the states
@@ -161,10 +162,10 @@ end
 par = @set par.π_star = 1.0
 plot_ss(plot_points)
 
-par = @set par.η = 0.95
-par = @set par.σ = 0.25
-par = @set par.κ = 0.05
-plot_ss(plot_points)
+#par = @set par.η = 0.95
+#par = @set par.σ = 0.25
+#par = @set par.κ = 0.05
+#plot_ss(plot_points)
 
 
 
@@ -189,27 +190,22 @@ ss[:ϵ_π] = 0.0
 ss[:ϵ_y] = 0.0
 # upper steady state
 sstates = nlsolve(steady_states, [2.0, 2.0])
-upper = Dict{Symbol,Float64}();
+upper = deepcopy(ss);
 upper[:π] = sstates.zero[1];
 upper[:y] = sstates.zero[2];
 upper[:Eπ_lead] = upper[:π];
 # central steady state
 sstates = nlsolve(steady_states, [0.0, 0.0])
-central = Dict{Symbol,Float64}();
+central = deepcopy(ss);
 central[:π] = sstates.zero[1];
 central[:y] = sstates.zero[2];
 central[:Eπ_lead] = central[:π];
 # lower steady state
-lower = Dict{Symbol,Float64}();
 sstates = nlsolve(steady_states, [-2.0, -2.0])
+lower = deepcopy(ss);
 lower[:π] = sstates.zero[1];
 lower[:y] = sstates.zero[2];
 lower[:Eπ_lead] = lower[:π];
-
-s = initialise_df(s, upper);
-s = initialise_df(s, ss);
-s = initialise_df(s, lower, gap = 2, steadystate_alt = upper)
-
 
 """
 Plot perfect foresight paths
@@ -245,9 +241,8 @@ plot!(size = (600,400))
 """
 Test the equilibrium conditions and step! function by confirming the steady states
 """
-
+# Steady state should give zeros from equilibrium_conditions_fast
 s = initialise_df(s, upper);
-s = initialise_df(s, ss);
 t = 3;
 if len(indices.outputindex_current)>0
 	predictions1 = cat(Array(s[t-1, indices.outputindex_current]), Array(s[t-1,indices.outputindex_lead]), dims = 1);
@@ -263,34 +258,30 @@ display(equilibrium_conditions_fast(F1,starting_values1, states1, predictions1))
 """
 Initialise beliefs by training on (some of the) steady state(s)
 """
-
-@everywhere beliefs = initialise_beliefs(options)
+# Initialise s
 s = initialise_df(s, lower, gap = 500, steadystate_alt = upper)
+s = initialise_df(s, central)
+# Initialise and train beliefs
+@everywhere beliefs = initialise_beliefs(options)
 @time beliefs = learn!(beliefs, s, options.N, options, indices, loss)
 
 
 """
 Run learning simulation
 """
-noise_π = par.σ_π*randn(nrow(s))
-s.ϵ_π = simulate_ar(par.ρ_π, par.σ_π, options.N, noise_π)
-noise_y = par.σ_y*randn(nrow(s))
-s.ϵ_y = simulate_ar(par.ρ_y, par.σ_y, options.N, noise_y)
-plot(s.ϵ_y[1:200])
-options.burnin = 100000;
-s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], lower, gap = 500, steadystate_alt = upper);
-s[1:options.burnin,:] = initialise_df(s[1:options.burnin,:], ss);
+# Training options
 options.burnin_use_net = true;
-options.learning_gap = 50000;
-options.plotting_gap = 50000;
-options.window = 49999;
+options.burnin = 100000;
+options.learning_gap = 100000;
+options.plotting_gap = 100000;
+options.window = 99999;
 options.plot_vars = [:π, :y, :Eπ, :Ey]
 
 # Simulate the learning for a set number of periods
 noise_π = par.σ_π*randn((options.N - options.burnin))
 noise_y = par.σ_y*randn((options.N - options.burnin))
 gr() # Set GR backend for plots as it's the fastest
-s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:]
+s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:];
 s.ϵ_π[(options.burnin+1):options.N] = simulate_ar(par.ρ_π, par.σ_π, options.N - options.burnin, noise_π)
 s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
 @time beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
@@ -305,35 +296,98 @@ plot!(size = (600,300))
 #savefig("figures/pw_linear/sim_series_pistar"*rep_pnt(par.π_star)*
 #	"_alpha"*rep_pnt(par.α)*".pdf")
 
-
-export_df = s[options.N-99999:options.N,:]
+export_df = deepcopy(s)
+#export_df = export_df[options.N-99999:options.N,:]
 rename!(export_df, replace.(names(export_df), "π" => "pi"))
 rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
 export_df.r = Taylor_condition.(export_df.pi)
-export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r]]
+#export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r, :y_lag, :Epi_lead]]
 
-#CSV.write("estimation/pwlin/pwlin_sim_pistar"*rep_pnt(par.π_star)*".csv",
-#	export_df)
+CSV.write("figures/pw_linear/sim_data/export_data.csv", export_df)
 
 #save("networks/pwlin_eta"*rep_pnt(par.η)*".jld2", "beliefs", beliefs)
 #beliefs = load("networks/pwlin_eta"*rep_pnt(par.η)*".jld2", "beliefs", "beliefs");
 
+"""
+Run a whole bunch of simulations
+"""
+## Initialise DF to add to
+plm_df = DataFrame(zeros(1,5), 
+	[:version, :progress, :y_lag, :Epi_lead, :Rsq_Epi])
+gr() # Set GR backend for plots as it's the fastest
+for jj in 1:10
+	print("Initialising version "*string(jj)*"\n")
+	s = initialise_df(s, central)
+	# Initialise and train beliefs
+	@everywhere beliefs = initialise_beliefs(options)
+	@time beliefs = learn!(beliefs, s, options.N, options, indices, loss)
+	# Run learning updates a bunch of times
+	for ii in 1:100
+		# Keep last version of previous run as burnin
+		s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:];
+		# Random shock draws
+		noise_π = par.σ_π*randn((options.N - options.burnin))
+		s.ϵ_π[(options.burnin+1):options.N] = simulate_ar(par.ρ_π, par.σ_π, options.N - options.burnin, noise_π)
+		noise_y = par.σ_y*randn((options.N - options.burnin))
+		s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
+		# Simulate distribution and update beliefs
+		beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
+		Rsq_π = 1 - var(s.π-s.Eπ)/var(s.π)
+		# Get results
+		run_df = DataFrame(version = jj.*ones(15), 
+							progress = ii.*ones(15), 
+							y_lag = -3.5:0.5:3.5, 
+							Epi_lead = zeros(15), 
+							Rsq_Epi = Rsq_π.*ones(15))
+		for yy in 1:nrow(run_df)
+			inputs = [run_df.y_lag[yy], 0., 0.]
+			predictions = predict!(inputs, beliefs)[3]
+			run_df.Epi_lead[yy] = predictions
+		end
+		plm_df = vcat(plm_df, run_df)
+	end
+	CSV.write("figures/pw_linear/sim_data/many_sims.csv", plm_df)
+end
+		
+groups = string.(plm_df.version).*"-".*string.(plm_df.progress)
+plot(plm_df.y_lag, plm_df.Epi_lead, group = groups)
+
+
 
 
 """
-Compare PLM and ALM
+Assess the accuracy of solution
 """
 s.Eπ_error = s.Eπ-s.π
 s.Ey_error = s.Ey-s.y
 s[:,:y_lag] .= 0.0
 s.y_lag[2:options.N] = s.y[1:(options.N-1)]
+s[:,:π_lag] .= 0.0
+s.π_lag[2:options.N] = s.π[1:(options.N-1)]
+
 s.Eπ_lead_error = vcat((s.Eπ_lead[1:(options.N-1)]-s.π[2:(options.N)]),[0.])
-plot(s.Eπ_lead_error)
+plot(s.Eπ_lead_error[(options.N-499):options.N])
 
 plot_range=410001:500000
-histogram(s.π[plot_range], label = "Inflation")
-histogram(s.y[plot_range], label = "Output", color = :red)
+plot(layout = (1,2))
+histogram!(s.π[plot_range], label = "Inflation", subplot = 1, legend = :bottomright)
+histogram!(s.y[plot_range], label = "Output", color = :red, subplot = 2, legend = :bottomright)
 
+# Calculate the R squared
+Rsq_π = 1 - var(s.π-s.Eπ)/var(s.π)
+Rsq_y = 1 - var(s.y-s.Ey)/var(s.y)
+
+# Conduct DHM test
+pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:y_lag], include_const = true);
+pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:π_lag], include_const = true);
+pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:ϵ_π], include_const = true);
+pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:ϵ_y], include_const = true);
+pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:y_lag, :ϵ_π, :ϵ_y], include_const = true);
+
+
+"""
+Create a heatmap
+"""
 y_range = Array(-6.0:0.05:6.0)
 π_range= Array(-3.5:0.05:3.5)
 heatmap_df = deepcopy(s[plot_range,:])
@@ -376,15 +430,6 @@ plot!(y_range, avg_error,subplot=2, xlabel= L"y_{t-1}", ylabel= L"Avg. [E \pi_{t
 	legend=:false,yguidefontrotation=0)
 plot!(size=(600,400))
 savefig("figures/heatmap_errors_pwlin_sim.pdf")
-# Calculate the R squared
-Rsq_π = 1 - var(heatmap_df.π-heatmap_df.Eπ)/var(heatmap_df.π)
-Rsq_y = 1 - var(heatmap_df.y-heatmap_df.Ey)/var(heatmap_df.y)
-
-
-pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:y_lag], include_const = true);
-pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:ϵ_π], include_const = true);
-pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:ϵ_y], include_const = true);
-pvals = DHM_test(s, 5000:500:500000, 400, hvars = [:y_lag, :ϵ_π, :ϵ_y], include_const = true);
 
 
 using HypothesisTests
@@ -400,10 +445,31 @@ pvalue(CorrelationTest(s.Eπ_lead_error[rrr],s.y[rrr.-1]))
 
 
 
+"""
+Identify stochastic steady states
+"""
+# Upper steady state
+upper_stoch = deepcopy(upper)
+paths = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 1000,
+	magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
+upper_stoch[:π] = paths.π[1000];
+upper_stoch[:Eπ_lead] = paths.Eπ_lead[1000];
+upper_stoch[:y] = paths.y[1000]
 
+# Lower steady state
+lower_stoch = deepcopy(lower)
+paths = irf(:ϵ_y, lower_stoch, beliefs, shock_period = 5, periods = 1000,
+	magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
+lower_stoch[:π] = paths.π[1000];
+lower_stoch[:Eπ_lead] = paths.Eπ_lead[1000];
+lower_stoch[:y] = paths.y[1000]
 
-
-
+pyplot()
+paths1 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
+	magnitude = -0.0, persistence = par.ρ_y, show_plot = true,plot_vars=[:y,:π])
+paths2 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
+	magnitude = -0.03, persistence = par.ρ_y, show_plot = true,
+	plot_vars=[:y,:π,:Ey, :Eπ])
 
 
 
@@ -420,9 +486,9 @@ initial_ss = deepcopy(central)
 starts = [(π=3.0,y=3.0,periods=100,arrows=[10]),
 	(π=-3.,y=-3.,periods=100,arrows=[10]),
 	(π=0.5,y=0.5,periods=100,arrows=[22, 65]),
-	(π=-0.25,y=-0.25,periods=100,arrows=[22, 65]),
-	#(π=1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=1.0,periods=100,arrows=[9]),
+	(π=-0.5,y=-0.5,periods=100,arrows=[22, 65]),
+	(π=-.2,y=-0.2,periods=100,arrows=[19]),
+	(π=0.3,y=0.2,periods=100,arrows=[19]),
 	#(π=1.0,y=-1.0,periods=100,arrows=[9]),
 	#(π=-1.0,y=-1.0,periods=100,arrows=[9])
 	]
@@ -445,243 +511,14 @@ plot!(size = (600,400))
 #	"_alpha"*rep_pnt(par.α)*".pdf")
 
 
-
-
-
-
-
-
-
-
-
-"""
-Smallest π_star (0.25)
-"""
-
-@everywhere par = (β = 0.95, κ = 0.05, η = 0.95, σ = 0.25,
-	ϕ_π = 0.5, π_star = 0.25, α = 0.75,
-	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.5, σ_π = 0.2);
-
-"""
-Perfect foresight phase
-"""
-plot_points = -4.0:0.01:4.0;
-plot_ss(plot_points)
-initial_ss = deepcopy(central)
-starts = [(π=-1.6,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=1.6,y=3.5,periods=100,arrows=[10,50,98]),
-	(π=-1.62,y=-3.5,periods=200,arrows=[10,50,198]),
-	(π=1.62,y=3.5,periods=200,arrows=[10,50,198]),
-	(π=-1.7,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=1.7,y=3.5,periods=100,arrows=[10,50,98])
-	]
-for start in starts
-	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths1 = pf_path(initial_ss, periods = start[:periods])
-
-	if start == starts[1]
-		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 1:(start[:periods]-1), label = "Perfect foresight paths", arrow_size = .5)
-	else
-		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 1:(start[:periods]-1), label = "", arrow_size = .5)
-	end
+for yy in -3.5:0.5:3.5
+	inputs = [yy, 0., 0.]
+	predictions = predict!(inputs, beliefs)[3]
+	print("y[t-1] = "*string(yy)*", Eπ[t+1] = "*string(round(predictions, digits = 4))*"\n")
 end
-plot!(size = (600,400))
-savefig("figures/pw_linear/perf_phase_pistar"*rep_pnt(par.π_star)*
-	"_alpha"*rep_pnt(par.α)*".pdf")
 
-
-"""
-Re-train beliefs
-"""
-@everywhere beliefs = initialise_beliefs(options)
-
-# Simulate the learning for a set number of periods
-noise_π = par.σ_π*randn((options.N - options.burnin))
-noise_y = par.σ_y*randn((options.N - options.burnin))
-gr() # Set GR backend for plots as it's the fastest
-s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:]
-s.ϵ_π[(options.burnin+1):options.N] = simulate_ar(par.ρ_π, par.σ_π, options.N - options.burnin, noise_π)
-s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
-@time beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
-
-# Plot simulated time series
-pyplot()
-plot_range = (500000-6999):(500000-4999)
-plot(layout=(2,1),legend = false,  link = :x)
-plot!(s.π[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
-plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
-plot!(size = (600,300))
-savefig("figures/pw_linear/sim_series_pistar"*rep_pnt(par.π_star)*
-	"_alpha"*rep_pnt(par.α)*".pdf")
-
- 
-export_df = s[options.N-99999:options.N,:]
-rename!(export_df, replace.(names(export_df), "π" => "pi"))
-rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
-export_df.r = Taylor_condition.(export_df.pi)
-export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r]]
-
-CSV.write("estimation/pwlin/pwlin_sim_pistar"*rep_pnt(par.π_star)*".csv",
-	export_df)
-
-
-"""
-Plot phase diagram
-"""
-
-pyplot()
-plot_ss(plot_points)
-initial_ss = deepcopy(central)
-periods = 5000
-starts = [(π=3.0,y=3.0,periods=periods,arrows=[10,periods-4900]),
-	(π=-3.,y=-3.,periods=periods,arrows=[10,periods-4900]),
-	(π=0.2,y=0.2,periods=periods,arrows=[102,periods-2500]),
-	(π=-0.3,y=-0.3,periods=periods,arrows=[102,periods-4600]),
-	#(π=1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=1.0,y=-1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=-1.0,periods=100,arrows=[9])
-	]
-for start in starts
-	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = start[:periods],
-		magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
-	paths.y_lag = cat(start[:y],paths.y[1:(start.periods -1 )],dims=1)
-	if start == starts[1]
-		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 2:(start[:periods]), label = "Equilibrium paths", arrow_size = .5,
-			final_arrow = true)
-	else
-		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows].-5, h_points = 2:(start[:periods]),
-			v_points = 2:start[:periods], arrow_size = .5, final_arrow = true)
-		end
+for yy in -3.5:0.5:3.5
+	inputs = [yy, 0., 0.]
+	predictions = predict!(inputs, beliefs)[1]
+	print("y[t-1] = "*string(yy)*", Eπ[t] = "*string(round(predictions, digits = 4))*"\n")
 end
-plot!(size = (600,400))
-savefig("figures/pw_linear/phase_nnet_pistar"*rep_pnt(par.π_star)*
-	"_alpha"*rep_pnt(par.α)*".pdf")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"""
-Larger π_star 1.5
-"""
-
-@everywhere par = (β = 0.95, κ = 0.05, η = 0.95, σ = 0.25,
-	ϕ_π = 0.5, π_star = 1.5, α = 0.75,
-	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.5, σ_π = 0.2);
-
-"""
-Perfect foresight phase
-"""
-plot_points = -6.0:0.01:6.0;
-plot_ss(plot_points)
-initial_ss = deepcopy(central)
-starts = [(π=-4.0,y=-5.5,periods=100,arrows=[10,50,98]),
-	(π=4.0,y=5.5,periods=100,arrows=[10,50,98]),
-	(π=-3.25,y=-5.5,periods=200,arrows=[10,50,198]),
-	(π=3.25,y=5.5,periods=200,arrows=[10,50,198]),
-	(π=-2.5,y=-5.5,periods=100,arrows=[10,50,98]),
-	(π=2.5,y=5.5,periods=100,arrows=[10,50,98])
-	]
-for start in starts
-	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths1 = pf_path(initial_ss, periods = start[:periods])
-
-	if start == starts[1]
-		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 1:(start[:periods]-1), label = "Perfect foresight paths", arrow_size = .5)
-	else
-		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 1:(start[:periods]-1), label = "", arrow_size = .5)
-	end
-end
-plot!(size = (600,400))
-savefig("figures/pw_linear/perf_phase_pistar"*rep_pnt(par.π_star)*
-	"_alpha"*rep_pnt(par.α)*".pdf")
-
-
-"""
-Re-train beliefs
-"""
-@everywhere beliefs = initialise_beliefs(options)
-
-# Simulate the learning for a set number of periods
-noise_π = par.σ_π*randn((options.N - options.burnin))
-noise_y = par.σ_y*randn((options.N - options.burnin))
-gr() # Set GR backend for plots as it's the fastest
-s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:]
-s.ϵ_π[(options.burnin+1):options.N] = simulate_ar(par.ρ_π, par.σ_π, options.N - options.burnin, noise_π)
-s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
-@time beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
-
-# Plot simulated time series
-pyplot()
-plot_range = (500000-6999):(500000-4999)
-plot(layout=(2,1),legend = false,  link = :x)
-plot!(s.π[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
-plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
-plot!(size = (600,300))
-savefig("figures/pw_linear/sim_series_pistar"*rep_pnt(par.π_star)*
-	"_alpha"*rep_pnt(par.α)*".pdf")
-
-# Export the data
-export_df = s[options.N-99999:options.N,:]
-rename!(export_df, replace.(names(export_df), "π" => "pi"))
-rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
-export_df.r = Taylor_condition.(export_df.pi)
-export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r]]
-
-CSV.write("estimation/pwlin/pwlin_sim_pistar"*rep_pnt(par.π_star)*".csv",
-	export_df)
-
-
-"""
-Plot phase diagram
-"""
-
-pyplot()
-plot_ss(plot_points)
-initial_ss = deepcopy(central)
-periods = 5000
-starts = [(π=5.0,y=5.0,periods=periods,arrows=[10,periods-4900]),
-	(π=-5.,y=-5.,periods=periods,arrows=[10,35,periods-4900]),
-	(π=0.2,y=0.2,periods=periods,arrows=[102,periods-2500]),
-	(π=-0.2,y=-0.2,periods=periods,arrows=[102,periods-4600])
-	#(π=1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=1.0,periods=100,arrows=[9]),
-	#(π=1.0,y=-1.0,periods=100,arrows=[9]),
-	#(π=-1.0,y=-1.0,periods=100,arrows=[9])
-	]
-for start in starts
-	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = start[:periods],
-		magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
-	paths.y_lag = cat(start[:y],paths.y[1:(start.periods -1 )],dims=1)
-	if start == starts[1]
-		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 2:(start[:periods]), label = "Equilibrium paths", arrow_size = .5,
-			final_arrow = true)
-	else
-		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows].-5, h_points = 2:(start[:periods]),
-			v_points = 2:start[:periods], arrow_size = .5, final_arrow = true)
-		end
-end
-plot!(size = (600,400))
-savefig("figures/pw_linear/phase_nnet_pistar"*rep_pnt(par.π_star)*
-	"_alpha"*rep_pnt(par.α)*".pdf")
