@@ -35,7 +35,7 @@ leads and lags are specified as a `_lead` or `_lag` suffix
 Define the parameters as a Named Tuple.
 """
 
-@everywhere par = (β = 0.95, κ = 0.05, η = 0.95, σ = 0.25,
+@everywhere par = (β = 0.95, κ = 0.05, η = 0.75, σ = 0.25,
 	ϕ_π = 0.5, π_star = 1.0, α = 0.75,
 	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.5, σ_π = 0.2);
 
@@ -159,7 +159,7 @@ function plot_ss(plot_points)
 	return ss_plot
 end
 
-par = @set par.π_star = 1.0
+#par = @set par.π_star = 1.0
 plot_ss(plot_points)
 
 #par = @set par.η = 0.95
@@ -211,17 +211,30 @@ lower[:Eπ_lead] = lower[:π];
 Plot perfect foresight paths
 """
 #for tt in 1:50
-plot_ss(plot_points)
 initial_ss = deepcopy(central)
-starts = [(π=-1.8,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=1.8,y=3.5,periods=100,arrows=[10,50,98]),
+starts = [(π=-0.3,y=-3.5,periods=100,arrows=[10,25,98]),
+	(π=0.3,y=3.5,periods=100,arrows=[10,25,98]),
+	(π=-2.8,y=-3.5,periods=100,arrows=[10,50,98]),
+	(π=2.8,y=3.5,periods=100,arrows=[10,50,98]),
 	(π=-2.2,y=-3.5,periods=100,arrows=[10,50,98]),
 	(π=2.2,y=3.5,periods=100,arrows=[10,50,98]),
-	#(π=-0.2,y=-0.2,periods=100,arrows=[20,50,98]),
-	#(π=0.2,y=0.2,periods=100,arrows=[20,50,98]),
-	(π=-2.5,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=2.5,y=3.5,periods=100,arrows=[10,50,98])
+	(π=-1.898,y=-3.5,periods=80,arrows=[10,55]),
+	(π=-2.394,y=-3.5,periods=60,arrows=[25]),
+	(π=1.898,y=3.5,periods=80,arrows=[10,55]),
+	(π=2.394,y=3.5,periods=60,arrows=[25])
 	]
+starts = [(π=-0.61,y=-3.5,periods=30,arrows=[10,25]),
+	(π=0.61,y=3.5,periods=30,arrows=[10,25]),
+	(π=-0.,y=-3.5,periods=100,arrows=[10,50,98]),
+	(π=0.,y=3.5,periods=100,arrows=[10,50,98]),
+	(π=-0.9,y=-3.5,periods=100,arrows=[10,50,98]),
+	(π=0.9,y=3.5,periods=100,arrows=[10,50,98]),
+	(π=-2.0,y=-3.5,periods=100,arrows=[10,50,98]),
+	(π=2.0,y=3.5,periods=100,arrows=[10,50,98]),
+	(π=1.5,y=-3.5,periods=100,arrows=[10,50,98]),
+	(π=-1.5,y=3.5,periods=100,arrows=[10,50,98])
+	]
+plot_ss(plot_points)
 for start in starts
 	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
 	paths1 = pf_path(initial_ss, periods = start[:periods])
@@ -234,6 +247,23 @@ for start in starts
 	end
 end
 plot!(size = (600,400))
+
+## Save these paths to a file
+all_paths_df = DataFrame(zeros(1,10), 
+	[:ϵ_π, :ϵ_y, :π, :y, :Eπ, :Ey, :Eπ_lead, :r, :y_lag, :path_number])
+for ii in 1:length(starts)
+	start = starts[ii];
+	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
+	paths1 = pf_path(initial_ss, periods = start[:periods]);
+	paths1[:,:y_lag] = vcat([NaN],paths1.y[1:(start.periods-1)]);
+	paths1[:,:path_number] .= ii
+	all_paths_df = vcat(all_paths_df, paths1)
+end
+all_paths_df = all_paths_df[all_paths_df.path_number .!= 0.,:]
+CSV.write("figures/pw_linear/sim_data/perf_foresight_paths_eta0p75.csv", all_paths_df)
+
+	
+
 #savefig("figures/pw_linear/perf_phase_pistar"*rep_pnt(par.π_star)*#
 #	"_alpha"*rep_pnt(par.α)*".pdf")
 
@@ -303,7 +333,7 @@ rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
 export_df.r = Taylor_condition.(export_df.pi)
 #export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r, :y_lag, :Epi_lead]]
 
-CSV.write("figures/pw_linear/sim_data/export_data.csv", export_df)
+CSV.write("figures/pw_linear/sim_data/export_data_eta0p75.csv", export_df)
 
 #save("networks/pwlin_eta"*rep_pnt(par.η)*".jld2", "beliefs", beliefs)
 #beliefs = load("networks/pwlin_eta"*rep_pnt(par.η)*".jld2", "beliefs", "beliefs");
@@ -312,8 +342,8 @@ CSV.write("figures/pw_linear/sim_data/export_data.csv", export_df)
 Run a whole bunch of simulations
 """
 ## Initialise DF to add to
-plm_df = DataFrame(zeros(1,5), 
-	[:version, :progress, :y_lag, :Epi_lead, :Rsq_Epi])
+plm_df = DataFrame(zeros(1,7), 
+	[:version, :progress, :y_lag, :y, :pi, :Epi_lead, :Rsq_Epi])
 gr() # Set GR backend for plots as it's the fastest
 for jj in 1:10
 	print("Initialising version "*string(jj)*"\n")
@@ -322,7 +352,7 @@ for jj in 1:10
 	@everywhere beliefs = initialise_beliefs(options)
 	@time beliefs = learn!(beliefs, s, options.N, options, indices, loss)
 	# Run learning updates a bunch of times
-	for ii in 1:100
+	for ii in 1:50
 		# Keep last version of previous run as burnin
 		s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:];
 		# Random shock draws
@@ -334,19 +364,25 @@ for jj in 1:10
 		beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
 		Rsq_π = 1 - var(s.π-s.Eπ)/var(s.π)
 		# Get results
-		run_df = DataFrame(version = jj.*ones(15), 
-							progress = ii.*ones(15), 
-							y_lag = -3.5:0.5:3.5, 
-							Epi_lead = zeros(15), 
-							Rsq_Epi = Rsq_π.*ones(15))
+		y_opts = -3.5:0.01:3.5
+		run_df = DataFrame(version = jj.*ones(length(y_opts)), 
+							progress = ii.*ones(length(y_opts)), 
+							y_lag = y_opts, 
+							y = zeros(length(y_opts)),
+							pi = zeros(length(y_opts)),
+							Epi_lead = zeros(length(y_opts)), 
+							Rsq_Epi = Rsq_π.*ones(length(y_opts)))
 		for yy in 1:nrow(run_df)
 			inputs = [run_df.y_lag[yy], 0., 0.]
-			predictions = predict!(inputs, beliefs)[3]
-			run_df.Epi_lead[yy] = predictions
+			predictions = predict!(inputs, beliefs)
+			run_df.pi[yy] = predictions[1]
+			run_df.y[yy] = predictions[2]
+			run_df.Epi_lead[yy] = predictions[3]
 		end
 		plm_df = vcat(plm_df, run_df)
 	end
-	CSV.write("figures/pw_linear/sim_data/many_sims.csv", plm_df)
+	plm_df = plm_df[plm_df.version .!= 0.,:]
+	CSV.write("figures/pw_linear/sim_data/many_sims_eta0p"*string(Int(par.η*100))*".csv", plm_df)
 end
 		
 groups = string.(plm_df.version).*"-".*string.(plm_df.progress)

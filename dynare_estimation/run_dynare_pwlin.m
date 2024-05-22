@@ -49,6 +49,17 @@ save pwlin_det/pwlin_learning_sim y pi r epsilon_y epsilon_pi
 save pwlin_indet/pwlin_learning_sim y pi r epsilon_y epsilon_pi
 clear all
 
+learning_data = readtable('simulated_data/export_data_eta0p75.csv');
+y = learning_data.y;
+pi = learning_data.pi;
+r = learning_data.r;
+epsilon_y = learning_data.epsilon_y;
+epsilon_pi = learning_data.epsilon_pi;
+
+save pwlin_det/pwlin_learning_sim_eta0p75 y pi r epsilon_y epsilon_pi
+save pwlin_indet/pwlin_learning_sim_eta0p75 y pi r epsilon_y epsilon_pi
+clear all
+
 %% Determinate model
 cd pwlin_det/
 
@@ -66,6 +77,12 @@ dynare pwlin_det_est_learn noclearall nolog
 clear all; close all;
 cd ..
 
+% Estimate on learning data (eta=0.75)
+dynare pwlin_det_est_learn_0p75 noclearall nolog
+clear all; close all;
+cd ..
+
+
 %%  Set parameters and solve the indeterminate model with a sunspot shock
 cd pwlin_indet/
 
@@ -81,3 +98,9 @@ clear all; close all;
 % Estimate the linear sunspot model on learning data
 dynare pwlin_indet_est_learn noclearall nolog
 clear all; close all;
+
+
+% Estimate on learning data (eta=0.75)
+dynare pwlin_indet_est_learn_0p75 noclearall nolog
+clear all; close all;
+cd ..
