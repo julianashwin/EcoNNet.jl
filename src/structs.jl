@@ -24,6 +24,7 @@ Mutable structure for options
     exogenous::Array{Symbol,1};
     states::Array{Symbol,1};
     auxiliary::Array{Symbol,1} = Symbol.([]);
+	nconditions::Int64 = length(endogenous);
 	burnin::Int64 = 6000;
 	burnin_use_net::Bool = false;
 	learning_gap::Int64 = 100;

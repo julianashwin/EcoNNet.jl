@@ -21,24 +21,139 @@ Expectations are denoted by a capital E prefix,
 leads and lags are specified as a `_lead` or `_lag` suffix
 """
 
-@everywhere options = EcoNNetOptions(infoset = [:y_lag, :ϵ_π, :ϵ_y],
-    expectations = [:Eπ,:Ey,:Eπ_lead],
-    endogenous = [:π, :y],
-    exogenous = [:ϵ_π,:ϵ_y],
-    states = [:y_lag, :ϵ_π, :ϵ_y],
-	auxiliary = [:r],
+@everywhere options = EcoNNetOptions(infoset = [:y_lag, :g_lag, :A, :ν],
+    expectations = [:Eπ, :Ey, :EΦ_lead, :Emu_lead],
+    endogenous = [:π, :y, :g, :R, :Φ, :mu],
+    exogenous = [:A,:ν],
+    states = [:y_lag, :g_lag, :A, :ν],
+    nconditions = 7,
     N = 500000, num_nodes = 32, activation = relu, window = 40000,
 	burnin = 50000, learning_gap = 10000, plotting_gap = 10000)
 
 @everywhere beliefs = initialise_beliefs(options)
 
+
+
 """
 Define the parameters as a Named Tuple.
 """
+@everywhere par = (β = 0.95, πstar = 1.02, α = 1.0, ξ = 1.0,
+    Abar = 1., ν = 1.6875, ϕ = 75., ψ = 10., ϵ = 0., gbar = 0.6, 
+    ϕ_π = 2.0, ϕ_y = 0.5, λ = 0.5, k = 2.0,
+    Rstar = 1.02/0.95, ystar = 1.0);
 
-@everywhere par = (β = 0.95, κ = 0.05, η = 0.95, σ = 0.25,
-	ϕ_π = 0.5, π_star1 = 1.0, π_star2 = -10.0, α = 0.75,
-	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.5, σ_π = 0.2);
+
+plot()
+inf = -5:0.01:5
+k=100.0
+g = par.gbar./(1 .+exp.(k.*inf)) 
+plot!(inf, g, label = "k = "*string(k))
+k=2.0
+g = par.gbar./(1 .+exp.(k.*inf)) 
+plot!(inf, g, label = "k = "*string(k))
+
+    
+"""
+Function that gives Φ'(x)x, where Φ is a Linex adjustment cost function
+"""
+
+@everywhere function Linex_cost(infl::Float64)
+    out_ = (par.ϕ/par.ψ)*infl*(1-exp(-par.ψ*(infl - par.πstar)))
+    return out_
+end
+
+plot()
+inf = 0.95:0.001:1.1
+plot!(inf, Linex_cost.(inf), label = "Linex cost")
+plot!(inf, zeros(length(inf)), linestyle = :dash, label = false)
+
+Linex_cost.(par.πstar)
+
+"""
+Find the target rate output (ystar)
+"""
+function PC_find_y(F, x, infl)
+    y = x[1];
+    out_ = (1 - par.β)*Linex_cost(infl) -
+        par.ν/par.α*(y/par.Abar)^((1+par.ϵ)/par.α) + 
+        ((par.ν-1)*y)/(
+            (1 - par.λ)*(y + (par.ξ - 1)*par.gbar/(1+exp(par.k*(infl - par.πstar)))))
+    F[1] = out_
+    return F
+end
+
+F = [0.]
+ystar = nlsolve((F,x) -> PC_find_y(F,x,par.πstar), [1.0]).zero[1]
+
+par = @set par.ystar = ystar
+
+"""
+Plot steady state conditions
+"""
+function PC_condition(infl)
+    results = nlsolve((F,x) -> PC_find_y(F,x,infl), [1.0])
+    if results.f_converged
+        y = results.zero[1]
+    else 
+        y = NaN
+    end
+    return y 
+end
+
+function Taylor_Rule(infl, y)
+    R = (par.Rstar*(infl/par.πstar)^par.ϕ_π * (y/par.ystar)^par.ϕ_y)
+    R = max(R, 1)
+    return R
+end
+
+function ZLB_binds(infl)
+    y = ( (par.Rstar*(infl/par.πstar)^par.ϕ_π * (1/par.ystar)^par.ϕ_y) )^(-1/ par.ϕ_y)
+    return y 
+end
+   
+function IS_find_y(F, x, infl)
+    y = x[1];
+    out_ = 1 - par.β* Taylor_Rule(infl, y) *(1/infl)
+    F[1] = out_
+    return F
+end
+
+
+function IS_condition(infl)
+    results = nlsolve((F,x) -> IS_find_y(F,x,infl), [1.0])
+
+    if results.f_converged
+        y = results.zero[1]
+    else 
+        y = par.gbar/(1 + exp(par.k*(infl - par.πstar)))
+    end
+    return y
+end
+   
+
+
+pyplot()
+infl_points = 0.7:0.01:1.4;
+y_points = 0.2:0.01:1.1;
+function plot_ss(infl_points, y_points)
+	# Set up plot
+	ss_plot = plot(xlabel = L"y_{t-1}", xlims = (minimum(y_points),maximum(y_points)),
+    	ylabel = L"\pi_t", ylims = (minimum(infl_points),maximum(infl_points)),legend=:bottomright, yguidefontrotation=-90)
+	# Plot NKPC condition
+	plot!(PC_condition.(infl_points),infl_points, label = "Phillips Curve", color = :black)
+	# Plot IS condition
+	plot!(IS_condition.(infl_points),infl_points, label = "IS Curve", color = :green)
+	# Fill in ZLB area
+    plot!(ZLB_binds.(infl_points), infl_points,
+		fillrange=[minimum(infl_points)*ones(len(infl_points))], fillalpha = 0.5,
+		 color = :paleturquoise1, label = "ZLB binds")
+	return ss_plot
+end
+
+## Plots and save the steady states
+plot_ss(infl_points, y_points)
+plot!(size = (600, 400), xguidefontsize = 20, yguidefontsize = 18)
+savefig("figures/EHM/EHM_det_steadystates.pdf")
 
 """
 State the equilibrium conditions of the model as a function which returns
@@ -50,62 +165,44 @@ State the equilibrium conditions of the model as a function which returns
     # Manually unpack the states
     #p_lag::Float64 = states_input[1]
     y_lag::Float64 = states_input[1]
-    ϵ_π::Float64 = states_input[2]
-	ϵ_y::Float64 = states_input[3]
+    g_lag::Float64 = states_input[2]
+    A_t::Float64 = states_input[3]
+	ν_t::Float64 = states_input[4]
     # and the predictions
-    #Ep::Float64 = predictions_input[1]
-    #Ey::Float64 = predictions_input[2]
-    Eπ_lead::Float64 = predictions_input[3]
+    Eπ::Float64 = predictions_input[1]
+    Ey::Float64 = predictions_input[2]
+    EΦ_lead::Float64 = predictions_input[3]
+    Emu_lead::Float64 = predictions_input[4]
     # and the endogenous variables
     π_t::Float64 = x[1]
     y_t::Float64 = x[2]
+    g_t::Float64 = x[3]
+    R_t::Float64 = x[4]
+    Φ_t::Float64 = x[5]
+    mu_t::Float64 = x[6]
 
-	# NKPC
-    F[1] = par.β*Eπ_lead + par.κ*y_t + ϵ_π - π_t ::Float64
+    # Government spending
+    F[1] = g_t - par.gbar/(1 + exp(par.k*(π_t - par.πstar))) ::Float64
 
-	if π_t > par.π_star1
-		r_t = par.ϕ_π*π_t + par.α*(π_t - par.π_star1)
-	elseif π_t < par.π_star2
-		r_t = par.ϕ_π*π_t + par.α*(π_t - par.π_star2)
-	else
-		r_t = par.ϕ_π*π_t
-	end
+    # Taylor Taylor
+    F[2] = R_t - max(1, par.Rstar*(π_t/par.πstar)^par.ϕ_π * (y_t/par.ystar)^par.ϕ_y) ::Float64
 
-	# IS curve
-    F[2] = par.η*y_lag - par.σ*(r_t - Eπ_lead) + ϵ_y - y_t ::Float64
+	# Φ_t Linex adjustment cost term
+    F[3] = Φ_t - Linex_cost(π_t) ::Float64
+
+    # μ_t marginal cost (sort of)
+    F[4] = mu_t - (1/π_t)*(1/(y_t + (par.ξ - 1)*g_t - par.λ*(y_lag + (par.ξ - 1)*g_lag))) ::Float64
+
+	# NKPC condition
+    F[5] =  Φ_t - (ν_t/par.α)*(y_t/A_t)^((par.ϵ + 1)/par.α) - (1 - ν_t)*y_t*π_t*mu_t - par.β*EΦ_lead ::Float64
+
+    # EE condition
+    F[6] = π_t*mu_t - par.β*R_t*Emu_lead ::Float64
+
+    # Lower bound on output
+    F[7] = y_t - max(y_t, g_t)
 
     return F
-end
-
-
-"""
-Define equations of motion under perfect foresight as a useful comparison
-"""
-function perfect_foresight(inputs)
-    # Manually unpack the states (endogenous variables in same order as in options)
-    π_lag = inputs[1]
-    y_lag = inputs[2]
-    # and the predictions
-    # π[t+1] = 1/β*(π[t] - κ*y[t])
-    π = (1/par.β)*(π_lag - par.κ*y_lag)
-    # y[t+1] = η*y[t] - σ*(ϕ_π*π[t+1] + α π[t+1]^3 - π[t+2])
-
-	if π > par.π_star1
-		r = par.ϕ_π*π + par.α*(π - par.π_star1)
-	elseif π < par.π_star2
-		r = par.ϕ_π*π + par.α*(π - par.π_star2)
-	else
-		r = par.ϕ_π*π
-	end
-
-	y = (par.β/(par.β+par.σ*par.κ))*(
-		par.η*y_lag - par.σ*r + (par.σ/par.β)*π)
-	# Impose upper and lower bounds to allow plotting
-	π = min(π,max(π,-1e6),1e6)
-	y = min(y,max(y,-1e6),1e6)
-
-    outputs = [π,y]
-
 end
 
 
@@ -123,54 +220,6 @@ s = DataFrame(ones(options.N, length(variables)), variables);
 
 
 """
-Plot steady state conditions
-"""
-function NKPC_condition(y)
-    π = par.κ/(1-par.β)*y
-end
-function Taylor_condition(π)
-	if π > par.π_star1
-		r = par.ϕ_π*π + par.α*(π - par.π_star1)
-	elseif π < par.π_star2
-		r = par.ϕ_π*π + par.α*(π - par.π_star2)
-	else
-		r = par.ϕ_π*π
-	end
-end
-function IS_condition(π)
-    y = -(par.σ/(1-par.η))*(Taylor_condition(π) - π)
-end
-
-pyplot()
-plot_points = -6.0:0.01:4.0;
-function plot_ss(plot_points)
-	# Set up plot
-	ss_plot = plot(xlabel = L"y_{t-1}", xlims = (minimum(plot_points),maximum(plot_points)),
-    	ylabel = L"\pi_t", ylims = (minimum(plot_points),maximum(plot_points)),legend=:bottomright, yguidefontrotation=-90)
-	# Plot NKPC condition
-	plot!(plot_points,NKPC_condition.(plot_points), label = "Phillips Curve", color = :black)
-	# Plot IS condition
-	plot!(IS_condition.(plot_points),plot_points, label = "IS Curve", color = :green)
-	# Fill in indeterminate area
-	plot!(plot_points, par.π_star1*ones(len((plot_points))),
-		fillrange=[par.π_star2*ones(len(plot_points))], fillalpha = 0.5,
-		 color = :paleturquoise1, label = L"\pi_t < \pi^*")
-	display(plot!(plot_points, par.π_star2*ones(len((plot_points))),
-		color = :paleturquoise1, label = false))
-	return ss_plot
-end
-
-#par = @set par.π_star = 1.0
-plot_ss(plot_points)
-
-#par = @set par.η = 0.95
-#par = @set par.σ = 0.25
-#par = @set par.κ = 0.05
-#plot_ss(plot_points)
-
-
-
-"""
 Find the steady states numerically
 """
 # Define a steady state function to numerically solve
@@ -178,96 +227,55 @@ Find the steady states numerically
 Function that gives zero when x (inflation, output) is at a deterministic steady state
 """
 function steady_states(F::Array{Float64,1},x::Array{Float64,1})
-    π::Float64 = x[1]
-    y::Float64 = x[2]
+    π_t::Float64 = x[1]
+    y_t::Float64 = x[2]
 
-    F[1]::Float64 = par.β*π + par.κ*y - π
-    F[2]::Float64 = par.η*y - par.σ*(Taylor_condition(π) - π) - y
+    F[1]::Float64 = y_t - PC_condition(π_t)
+    if π_t == par.β
+        F[2] = y_t - PC_condition(π_t)
+    else
+        F[2] = y_t - IS_condition(π_t)
+    end
+    
     return F
 end
 # Exogenous processes
 ss = Dict{Symbol,Float64}()
-ss[:ϵ_π] = 0.0
-ss[:ϵ_y] = 0.0
+ss[:A] = par.Abar
+ss[:ν] = par.ν
 # upper steady state
-sstates = nlsolve(steady_states, [2.0, 2.0])
+sstates = nlsolve(steady_states, [1.0, 1.0])
 upper = deepcopy(ss);
 upper[:π] = sstates.zero[1];
 upper[:y] = sstates.zero[2];
-upper[:Eπ_lead] = upper[:π];
+upper[:g] = par.gbar/(1 + exp(par.k*(upper[:π] - par.πstar)))
+upper[:R] = max(1, par.Rstar*(upper[:π]/par.πstar)^par.ϕ_π * (upper[:y]/par.ystar)^par.ϕ_y)
+upper[:Φ] = Linex_cost(upper[:π])
+upper[:mu] = (1/upper[:π])*(1/((1 - par.λ)*(upper[:y] + (par.ξ - 1)*upper[:g])))
+upper[:EΦ_lead] = upper[:Φ]
+upper[:Emu_lead] = upper[:mu]
 # central steady state
-sstates = nlsolve(steady_states, [0.0, 0.0])
+sstates = nlsolve(steady_states, [par.β, 0.5])
 central = deepcopy(ss);
 central[:π] = sstates.zero[1];
 central[:y] = sstates.zero[2];
-central[:Eπ_lead] = central[:π];
+central[:g] = par.gbar/(1 + exp(par.k*(central[:π] - par.πstar)))
+central[:R] = max(1, par.Rstar*(central[:π]/par.πstar)^par.ϕ_π * (central[:y]/par.ystar)^par.ϕ_y)
+central[:Φ] = Linex_cost(central[:π])
+central[:mu] = (1/central[:π])*(1/((1 - par.λ)*(central[:y] + (par.ξ - 1)*central[:g])))
+central[:EΦ_lead] = central[:Φ]
+central[:Emu_lead] = central[:mu]
 # lower steady state
-sstates = nlsolve(steady_states, [par.π_star2-2.0, par.π_star2-2.0])
+sstates = nlsolve(steady_states, [0.9, par.gbar/2])
 lower = deepcopy(ss);
 lower[:π] = sstates.zero[1];
 lower[:y] = sstates.zero[2];
-lower[:Eπ_lead] = lower[:π];
-
-"""
-Plot perfect foresight paths
-"""
-#for tt in 1:50
-initial_ss = deepcopy(central)
-starts = [(π=-0.3,y=-3.5,periods=100,arrows=[10,25,98]),
-	(π=0.3,y=3.5,periods=100,arrows=[10,25,98]),
-	(π=-2.8,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=2.8,y=3.5,periods=100,arrows=[10,50,98]),
-	(π=-2.2,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=2.2,y=3.5,periods=100,arrows=[10,50,98]),
-	(π=-1.898,y=-3.5,periods=80,arrows=[10,55]),
-	(π=-2.394,y=-3.5,periods=60,arrows=[25]),
-	(π=1.898,y=3.5,periods=80,arrows=[10,55]),
-	(π=2.394,y=3.5,periods=60,arrows=[25])
-	]
-starts = [(π=-0.61,y=-3.5,periods=30,arrows=[10,25]),
-	(π=0.61,y=3.5,periods=30,arrows=[10,25]),
-	(π=-0.,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=0.,y=3.5,periods=100,arrows=[10,50,98]),
-	(π=-0.9,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=0.9,y=3.5,periods=100,arrows=[10,50,98]),
-	(π=-2.0,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=2.0,y=3.5,periods=100,arrows=[10,50,98]),
-	(π=1.5,y=-3.5,periods=100,arrows=[10,50,98]),
-	(π=-1.5,y=3.5,periods=100,arrows=[10,50,98])
-	]
-plot_ss(plot_points)
-for start in starts
-	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths1 = pf_path(initial_ss, periods = start[:periods])
-	if start == starts[1]
-		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 1:(start[:periods]-1), label = "Perfect foresight paths", arrow_size = .5)
-	else
-		phase_arrow_plot(paths1, [:y,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 1:(start[:periods]-1), label = "", arrow_size = .5)
-	end
-end
-plot!(size = (600,400))
-
-## Save these paths to a file
-all_paths_df = DataFrame(zeros(1,10), 
-	[:ϵ_π, :ϵ_y, :π, :y, :Eπ, :Ey, :Eπ_lead, :r, :y_lag, :path_number])
-for ii in 1:length(starts)
-	start = starts[ii];
-	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths1 = pf_path(initial_ss, periods = start[:periods]);
-	paths1[:,:y_lag] = vcat([NaN],paths1.y[1:(start.periods-1)]);
-	paths1[:,:path_number] .= ii
-	all_paths_df = vcat(all_paths_df, paths1)
-end
-all_paths_df = all_paths_df[all_paths_df.path_number .!= 0.,:]
-CSV.write("figures/pw_linear/sim_data/perf_foresight_paths_eta0p75.csv", all_paths_df)
-
-	
-
-#savefig("figures/pw_linear/perf_phase_pistar"*rep_pnt(par.π_star)*#
-#	"_alpha"*rep_pnt(par.α)*".pdf")
-
+lower[:g] = par.gbar/(1 + exp(par.k*(lower[:π] - par.πstar)))
+lower[:R] = max(1, par.Rstar*(lower[:π]/par.πstar)^par.ϕ_π * (lower[:y]/par.ystar)^par.ϕ_y)
+lower[:Φ] = Linex_cost(lower[:π])
+lower[:mu] = (1/lower[:π])*(1/((1 - par.λ)*(lower[:y] + (par.ξ - 1)*lower[:g])))
+lower[:EΦ_lead] = lower[:Φ]
+lower[:Emu_lead] = lower[:mu]
 
 """
 Test the equilibrium conditions and step! function by confirming the steady states
@@ -282,7 +290,7 @@ else
 end
 states1 = extract_states(s,t,indices);
 starting_values1 = Vector(s[t,indices.endogindex]);
-F1 = zeros(length(options.endogenous))
+F1 = zeros(options.nconditions)
 display(step_fast!(cat(starting_values1, states1, predictions1, dims = 1),options))
 display(equilibrium_conditions_fast(F1,starting_values1, states1, predictions1))
 

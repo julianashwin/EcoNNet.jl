@@ -79,7 +79,7 @@ function step_fast!(x::Array{Float64,1}, options::EcoNNetOptions)
 	predictions::Array{Float64,1} = x[len(x)+1-len(options.expectations):len(x)]
 
     # Solve system of non-linear equations
-	F::Array{Float64,1} = zeros(len(options.endogenous))
+	F::Array{Float64,1} = zeros(options.nconditions)
     results = nlsolve((F,x) -> equilibrium_conditions_fast(F,x,states,predictions), starting_values)::SolverResults
 	@assert results.f_converged "Equilibrium conditions not converged - no possible solution?"
 	if abs(results.residual_norm) > 0.0000001
