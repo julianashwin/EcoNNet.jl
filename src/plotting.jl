@@ -44,12 +44,13 @@ end
 A function that uses the beliefs and equilibrium conditions to generate IRFs
 """
 function irf(type, initial_ss, beliefs::Chain; periods = 100, magnitude = 1.0, persistence = 0.9,
-		show_plot = true, plot_vars = nothing, shock_period = 3, y_lim::Array{Float64,1} = zeros(2))
+		show_plot = true, plot_vars = nothing, shock_period = 3, y_lim::Array{Float64,1} = zeros(2),
+		shock_mean = 0.)
     global paths = DataFrame(zeros(periods, len(variables)), variables);
     paths = initialise_df(paths, initial_ss);
     global shock = zeros(periods)
     shock[shock_period] = magnitude
-    shock = simulate_ar(persistence, 0.00, periods, shock)
+    shock = shock_mean .+ simulate_ar(persistence, 0.00, periods, shock)
     @eval (global (paths.$type = shock))
     #plot(paths.ϵ_y)
 

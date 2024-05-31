@@ -21,12 +21,12 @@ Expectations are denoted by a capital E prefix,
 leads and lags are specified as a `_lead` or `_lag` suffix
 """
 
-@everywhere options = EcoNNetOptions(infoset = [:y_lag, :g_lag, :A, :ν],
+@everywhere options = EcoNNetOptions(
+    infoset = [:y_lag, :g_lag, :ξ_lag, :A, :ν, :ξ],
     expectations = [:Eπ, :Ey, :EΦ_lead, :Emu_lead],
     endogenous = [:π, :y, :g, :R, :Φ, :mu],
-    exogenous = [:A,:ν],
-    states = [:y_lag, :g_lag, :A, :ν],
-    nconditions = 7,
+    exogenous = [:A, :ν, :ξ],
+    states = [:y_lag, :g_lag, :ξ_lag, :A, :ν, :ξ],
     N = 500000, num_nodes = 32, activation = relu, window = 40000,
 	burnin = 50000, learning_gap = 10000, plotting_gap = 10000)
 
@@ -37,10 +37,12 @@ leads and lags are specified as a `_lead` or `_lag` suffix
 """
 Define the parameters as a Named Tuple.
 """
-@everywhere par = (β = 0.95, πstar = 1.02, α = 1.0, ξ = 1.0,
-    Abar = 1., ν = 1.6875, ϕ = 75., ψ = 10., ϵ = 0., gbar = 0.6, 
+
+@everywhere par = (β = 0.95, πstar = 1.02, α = 1.0, ξbar = 1.0,
+    Abar = 1., νbar = 1.6875, ϕ = 75., ψ = 5., ϵ = 0., gbar = 0.6, 
     ϕ_π = 2.0, ϕ_y = 0.5, λ = 0.5, k = 2.0,
-    Rstar = 1.02/0.95, ystar = 1.0);
+    ρ_A = 0.5, ρ_ν = 0.5, ρ_ξ = 0.5, σ_A = 0.01, σ_ν = 0.001, σ_ξ = 0.1,
+    Rstar = 1.02/0.95, ystar = 1.0,);
 
 
 plot()
@@ -75,9 +77,9 @@ Find the target rate output (ystar)
 function PC_find_y(F, x, infl)
     y = x[1];
     out_ = (1 - par.β)*Linex_cost(infl) -
-        par.ν/par.α*(y/par.Abar)^((1+par.ϵ)/par.α) + 
-        ((par.ν-1)*y)/(
-            (1 - par.λ)*(y + (par.ξ - 1)*par.gbar/(1+exp(par.k*(infl - par.πstar)))))
+        par.νbar/par.α*(y/par.Abar)^((1+par.ϵ)/par.α) + 
+        ((par.νbar-1)*y)/(
+            (1 - par.λ)*(y + (par.ξbar - 1)*par.gbar/(1+exp(par.k*(infl - par.πstar)))))
     F[1] = out_
     return F
 end
@@ -164,22 +166,25 @@ State the equilibrium conditions of the model as a function which returns
     x::Array{Float64,1},states_input::Array{Float64,1},predictions_input::Array{Float64,1})
     # Manually unpack the states
     #p_lag::Float64 = states_input[1]
-    y_lag::Float64 = states_input[1]
-    g_lag::Float64 = states_input[2]
-    A_t::Float64 = states_input[3]
-	ν_t::Float64 = states_input[4]
+    y_lag = states_input[1] ::Float64
+    g_lag = states_input[2] ::Float64
+    ξ_lag = states_input[3] ::Float64
+    A_t = states_input[4] ::Float64
+	ν_t = states_input[5] ::Float64
+    ξ_t = states_input[6] ::Float64
+    
     # and the predictions
-    Eπ::Float64 = predictions_input[1]
-    Ey::Float64 = predictions_input[2]
-    EΦ_lead::Float64 = predictions_input[3]
-    Emu_lead::Float64 = predictions_input[4]
+    Eπ = predictions_input[1] ::Float64
+    Ey = predictions_input[2] ::Float64
+    EΦ_lead = predictions_input[3] ::Float64
+    Emu_lead = predictions_input[4] ::Float64
     # and the endogenous variables
-    π_t::Float64 = x[1]
-    y_t::Float64 = x[2]
-    g_t::Float64 = x[3]
-    R_t::Float64 = x[4]
-    Φ_t::Float64 = x[5]
-    mu_t::Float64 = x[6]
+    π_t = x[1] ::Float64
+    y_t = x[2] ::Float64
+    g_t = x[3] ::Float64
+    R_t = x[4] ::Float64
+    Φ_t = x[5] ::Float64
+    mu_t = x[6] ::Float64
 
     # Government spending
     F[1] = g_t - par.gbar/(1 + exp(par.k*(π_t - par.πstar))) ::Float64
@@ -191,17 +196,18 @@ State the equilibrium conditions of the model as a function which returns
     F[3] = Φ_t - Linex_cost(π_t) ::Float64
 
     # μ_t marginal cost (sort of)
-    F[4] = mu_t - (1/π_t)*(1/(y_t + (par.ξ - 1)*g_t - par.λ*(y_lag + (par.ξ - 1)*g_lag))) ::Float64
+    F[4] = mu_t - (1/π_t)*(1/(y_t + (ξ_t - 1)*g_t - par.λ*(y_lag + (ξ_lag - 1)*g_lag))) ::Float64
 
 	# NKPC condition
     F[5] =  Φ_t - (ν_t/par.α)*(y_t/A_t)^((par.ϵ + 1)/par.α) - (1 - ν_t)*y_t*π_t*mu_t - par.β*EΦ_lead ::Float64
 
-    # EE condition
-    F[6] = π_t*mu_t - par.β*R_t*Emu_lead ::Float64
-
-    # Lower bound on output
-    F[7] = y_t - max(y_t, g_t)
-
+    # EE condition (only binds when c > 0 !!)
+    if y_t > g_t
+        F[6] = π_t*mu_t - par.β*R_t*Emu_lead ::Float64
+    else
+        F[6] = y_t - g_t ::Float64
+    end
+    
     return F
 end
 
@@ -242,7 +248,8 @@ end
 # Exogenous processes
 ss = Dict{Symbol,Float64}()
 ss[:A] = par.Abar
-ss[:ν] = par.ν
+ss[:ν] = par.νbar
+ss[:ξ] = par.ξbar
 # upper steady state
 sstates = nlsolve(steady_states, [1.0, 1.0])
 upper = deepcopy(ss);
@@ -251,7 +258,7 @@ upper[:y] = sstates.zero[2];
 upper[:g] = par.gbar/(1 + exp(par.k*(upper[:π] - par.πstar)))
 upper[:R] = max(1, par.Rstar*(upper[:π]/par.πstar)^par.ϕ_π * (upper[:y]/par.ystar)^par.ϕ_y)
 upper[:Φ] = Linex_cost(upper[:π])
-upper[:mu] = (1/upper[:π])*(1/((1 - par.λ)*(upper[:y] + (par.ξ - 1)*upper[:g])))
+upper[:mu] = (1/upper[:π])*(1/((1 - par.λ)*(upper[:y] + (upper[:ξ] - 1)*upper[:g])))
 upper[:EΦ_lead] = upper[:Φ]
 upper[:Emu_lead] = upper[:mu]
 # central steady state
@@ -262,7 +269,7 @@ central[:y] = sstates.zero[2];
 central[:g] = par.gbar/(1 + exp(par.k*(central[:π] - par.πstar)))
 central[:R] = max(1, par.Rstar*(central[:π]/par.πstar)^par.ϕ_π * (central[:y]/par.ystar)^par.ϕ_y)
 central[:Φ] = Linex_cost(central[:π])
-central[:mu] = (1/central[:π])*(1/((1 - par.λ)*(central[:y] + (par.ξ - 1)*central[:g])))
+central[:mu] = (1/central[:π])*(1/((1 - par.λ)*(central[:y] + (upper[:ξ] - 1)*central[:g])))
 central[:EΦ_lead] = central[:Φ]
 central[:Emu_lead] = central[:mu]
 # lower steady state
@@ -273,7 +280,7 @@ lower[:y] = sstates.zero[2];
 lower[:g] = par.gbar/(1 + exp(par.k*(lower[:π] - par.πstar)))
 lower[:R] = max(1, par.Rstar*(lower[:π]/par.πstar)^par.ϕ_π * (lower[:y]/par.ystar)^par.ϕ_y)
 lower[:Φ] = Linex_cost(lower[:π])
-lower[:mu] = (1/lower[:π])*(1/((1 - par.λ)*(lower[:y] + (par.ξ - 1)*lower[:g])))
+lower[:mu] = (1/lower[:π])*(1/((1 - par.λ)*(lower[:y] + (upper[:ξ] - 1)*lower[:g])))
 lower[:EΦ_lead] = lower[:Φ]
 lower[:Emu_lead] = lower[:mu]
 
@@ -282,7 +289,7 @@ Test the equilibrium conditions and step! function by confirming the steady stat
 """
 # Steady state should give zeros from equilibrium_conditions_fast
 s = initialise_df(s, lower);
-t = 3;
+t = 230003;
 if len(indices.outputindex_current)>0
 	predictions1 = cat(Array(s[t-1, indices.outputindex_current]), Array(s[t-1,indices.outputindex_lead]), dims = 1);
 else
@@ -299,7 +306,7 @@ Initialise beliefs by training on (some of the) steady state(s)
 """
 # Initialise s
 s = initialise_df(s, lower, gap = 500, steadystate_alt = upper)
-s = initialise_df(s, central)
+s = initialise_df(s, upper)
 # Initialise and train beliefs
 @everywhere beliefs = initialise_beliefs(options)
 @time beliefs = learn!(beliefs, s, options.N, options, indices, loss)
@@ -308,22 +315,74 @@ s = initialise_df(s, central)
 """
 Run learning simulation
 """
+# Change the error variances
+par = @set par.σ_A  = 0.05
+par = @set par.σ_ν  = 0.05
+par = @set par.σ_ξ  = 0.2
+
 # Training options
 options.burnin_use_net = true;
-options.burnin = 100000;
-options.learning_gap = 100000;
-options.plotting_gap = 100000;
-options.window = 49999;
+options.burnin = 10000 #100000;
+options.learning_gap = 5000 #100000;
+options.plotting_gap = 25000 #100000;
+options.window = 4999 #49999;
 options.plot_vars = [:π, :y, :Eπ, :Ey]
 
 # Simulate the learning for a set number of periods
-noise_π = par.σ_π*randn((options.N - options.burnin))
-noise_y = par.σ_y*randn((options.N - options.burnin))
+noise_A = par.σ_A*randn((options.N - options.burnin))
+noise_ν = par.σ_ν*randn((options.N - options.burnin))
+noise_ξ = par.σ_ξ*randn((options.N - options.burnin))
 gr() # Set GR backend for plots as it's the fastest
 s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:];
-s.ϵ_π[(options.burnin+1):options.N] = simulate_ar(par.ρ_π, par.σ_π, options.N - options.burnin, noise_π)
-s.ϵ_y[(options.burnin+1):options.N] = simulate_ar(par.ρ_y, par.σ_y, options.N - options.burnin, noise_y)
+s.A[(options.burnin+1):options.N] = par.Abar .+ simulate_ar(par.ρ_A, par.σ_A, options.N - options.burnin, noise_A)
+s.ν[(options.burnin+1):options.N] = par.νbar .+ simulate_ar(par.ρ_ν, par.σ_ν, options.N - options.burnin, noise_ν)
+s.ξ[(options.burnin+1):options.N] = par.ξbar .+ simulate_ar(par.ρ_ξ, par.σ_ξ, options.N - options.burnin, noise_ξ)
+s.A = max.(s.A, [0.5])
+s.ν = max.(s.ν, [0.5])
+s.ξ = max.(s.ξ, [0.5])
+s.ξ = min.(s.ξ, [1.5])
 @time beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
+
+
+"""
+Identify stochastic steady states
+"""
+# Upper steady state
+upper_stoch = deepcopy(upper)
+paths = irf(:ν, upper_stoch, beliefs, shock_period = 5, periods = 1000, shock_mean = par.νbar,
+	magnitude = 0.0, persistence = par.ρ_ν, show_plot = false)
+upper_stoch[:π] = paths.π[1000];
+upper_stoch[:y] = paths.y[1000]
+upper_stoch[:g] = paths.g[1000]
+upper_stoch[:R] = paths.R[1000]
+upper_stoch[:Φ] = paths.Φ[1000]
+upper_stoch[:mu] = paths.mu[1000]
+upper_stoch[:EΦ_lead] = paths.EΦ_lead[1000]
+upper_stoch[:Emu_lead] = paths.Emu_lead[1000]
+
+
+# Lower steady state
+lower_stoch = deepcopy(lower)
+paths = irf(:ϵ_y, lower_stoch, beliefs, shock_period = 5, periods = 1000,
+	magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
+lower_stoch[:π] = paths.π[1000];
+lower_stoch[:Eπ_lead] = paths.Eπ_lead[1000];
+lower_stoch[:y] = paths.y[1000]
+
+pyplot()
+plot()
+paths1 = irf(:ν, upper_stoch, beliefs, shock_period = 5, periods = 100, shock_mean = par.νbar,
+	magnitude = 0.5, persistence = par.ρ_ν, show_plot = true,plot_vars=[:y,:π])
+paths2 = irf(:A, upper_stoch, beliefs, shock_period = 5, periods = 100, shock_mean = par.Abar,
+	magnitude = 0.5, persistence = par.ρ_A, show_plot = true,plot_vars=[:y,:π])
+paths4 = irf(:ξ, upper_stoch, beliefs, shock_period = 5, periods = 100, shock_mean = par.Abar,
+	magnitude = 0.5, persistence = par.ρ_ξ, show_plot = true,plot_vars=[:y,:π])
+
+
+    paths2 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
+	magnitude = -0.03, persistence = par.ρ_y, show_plot = true,
+	plot_vars=[:y,:π,:Ey, :Eπ])
+
 
 # Plot simulated time series
 pyplot()

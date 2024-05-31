@@ -35,7 +35,7 @@ leads and lags are specified as a `_lead` or `_lag` suffix
 Define the parameters as a Named Tuple.
 """
 
-@everywhere par = (β = 0.95, κ = 0.05, η = 0.75, σ = 0.25,
+@everywhere par = (β = 0.95, κ = 0.05, η = 0.999, σ = 0.25,
 	ϕ_π = 0.5, π_star = 1.0, α = 0.75,
 	ρ_y = 0.5, σ_y = 0.2, ρ_π = 0.5, σ_π = 0.2);
 
