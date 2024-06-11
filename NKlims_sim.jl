@@ -26,7 +26,7 @@ Define the parameters as a Named Tuple.
 """
 
 @everywhere par = (β = 0.95, κ = 0.1,
-	η = 0.5, σ = 0.25, ϕ_π = 1.5, ϕ_y = 0.5,
+	η = 0.5, σ = 0.25, ϕ_π = 1.5, ϕ_y = 0.01,
 	ρ_π = 0.5, σ_π = 0.001, ρ_y = 0.5, σ_y = 0.001,
 	R_lim = -0.02, π_lim = -0.03, y_lim = -0.05);
 
@@ -223,6 +223,7 @@ for start in starts
 end
 display(phase_plot)
 plot!(size = (600,400))
+
 savefig("figures/NK_model/phase_NKlim_perf.pdf")
 
 for start in starts

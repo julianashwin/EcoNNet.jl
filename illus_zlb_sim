@@ -22,13 +22,13 @@ leads and lags are specified as a `_lead` or `_lag` suffix
 """
 
 @everywhere options = EcoNNetOptions(
-    infoset = [:y_lag, :g_lag, :ξ_lag, :A, :ν, :ξ],
+    infoset = [:y_lag, :g_lag, :A, :ξ],
     expectations = [:Eπ, :Ey, :EΦ_lead, :Emu_lead],
     endogenous = [:π, :y, :g, :R, :Φ, :mu],
     exogenous = [:A, :ν, :ξ],
     states = [:y_lag, :g_lag, :ξ_lag, :A, :ν, :ξ],
-    N = 500000, num_nodes = 32, activation = relu, window = 40000,
-	burnin = 50000, learning_gap = 10000, plotting_gap = 10000)
+    N = 50000, num_nodes = 32, activation = sigmoid, window = 4000,
+	burnin = 10000, learning_gap = 5000, plotting_gap = 10000)
 
 @everywhere beliefs = initialise_beliefs(options)
 
@@ -38,11 +38,13 @@ leads and lags are specified as a `_lead` or `_lag` suffix
 Define the parameters as a Named Tuple.
 """
 
-@everywhere par = (β = 0.95, πstar = 1.02, α = 1.0, ξbar = 1.0,
-    Abar = 1., νbar = 1.6875, ϕ = 75., ψ = 5., ϵ = 0., gbar = 0.6, 
-    ϕ_π = 2.0, ϕ_y = 0.5, λ = 0.5, k = 2.0,
-    ρ_A = 0.5, ρ_ν = 0.5, ρ_ξ = 0.5, σ_A = 0.01, σ_ν = 0.001, σ_ξ = 0.1,
+@everywhere par = (β = 0.95, πstar = 1.02, α = 0.35, ξbar = 1.0,
+    Abar = 1., νbar = 2.0, gbar = 0.8, ηbar = 1.0,
+    ϕ = 75., ψ = 5., ϵ = 0., 
+    ϕ_π = 2.0, ϕ_y = 1.0, λ = 0.8, k = 2.0,
+    ρ_A = 0.5, ρ_ν = 0.5, ρ_ξ = 0.5, σ_A = 0.01, σ_ν = 0.0, σ_ξ = 0.1,
     Rstar = 1.02/0.95, ystar = 1.0,);
+par = @set par.Rstar = par.πstar/par.β
 
 
 plot()
@@ -51,6 +53,9 @@ k=100.0
 g = par.gbar./(1 .+exp.(k.*inf)) 
 plot!(inf, g, label = "k = "*string(k))
 k=2.0
+g = par.gbar./(1 .+exp.(k.*inf)) 
+plot!(inf, g, label = "k = "*string(k))
+k=0.0
 g = par.gbar./(1 .+exp.(k.*inf)) 
 plot!(inf, g, label = "k = "*string(k))
 
@@ -65,7 +70,7 @@ Function that gives Φ'(x)x, where Φ is a Linex adjustment cost function
 end
 
 plot()
-inf = 0.95:0.001:1.1
+inf = 0.8:0.001:1.2
 plot!(inf, Linex_cost.(inf), label = "Linex cost")
 plot!(inf, zeros(length(inf)), linestyle = :dash, label = false)
 
@@ -76,21 +81,22 @@ Find the target rate output (ystar)
 """
 function PC_find_y(F, x, infl)
     y = x[1];
+    y = max(y, 0);
     out_ = (1 - par.β)*Linex_cost(infl) -
         par.νbar/par.α*(y/par.Abar)^((1+par.ϵ)/par.α) + 
         ((par.νbar-1)*y)/(
-            (1 - par.λ)*(y + (par.ξbar - 1)*par.gbar/(1+exp(par.k*(infl - par.πstar)))))
+            (1 - par.λ)*y + (par.ξbar + par.λ - 1)*par.gbar/(1+exp(par.k*(infl - par.πstar))))
     F[1] = out_
     return F
 end
 
 F = [0.]
 ystar = nlsolve((F,x) -> PC_find_y(F,x,par.πstar), [1.0]).zero[1]
-
 par = @set par.ystar = ystar
 
+
 """
-Plot steady state conditions
+Some steady state functions
 """
 function PC_condition(infl)
     results = nlsolve((F,x) -> PC_find_y(F,x,infl), [1.0])
@@ -101,10 +107,12 @@ function PC_condition(infl)
     end
     return y 
 end
+infls = 0.85:0.01:1.2
+plot(PC_condition.(infls),infls )
 
 function Taylor_Rule(infl, y)
     R = (par.Rstar*(infl/par.πstar)^par.ϕ_π * (y/par.ystar)^par.ϕ_y)
-    R = max(R, 1)
+    R = max(R, 1.0)
     return R
 end
 
@@ -122,21 +130,85 @@ end
 
 
 function IS_condition(infl)
-    results = nlsolve((F,x) -> IS_find_y(F,x,infl), [1.0])
-
-    if results.f_converged
-        y = results.zero[1]
-    else 
+    if infl <= par.β
         y = par.gbar/(1 + exp(par.k*(infl - par.πstar)))
+    else 
+        y =  (((par.β/infl)*par.Rstar*(infl/par.πstar)^par.ϕ_π * (1/par.ystar)^par.ϕ_y) )^(-1/par.ϕ_y)
     end
     return y
 end
    
 
+"""
+Function that gives zero when x (inflation, output) is at a deterministic steady state
+"""
+function steady_states(F::Array{Float64,1},x::Array{Float64,1})
+    π_t = x[1]
+    y_t = x[2]
+
+    F[1] = y_t - PC_condition(π_t)
+    if π_t == par.β
+        F[2] = y_t - PC_condition(π_t)
+    else
+        F[2] = y_t - IS_condition(π_t)
+    end
+    
+    return F
+end
+
+
+"""
+Find the steady states numerically
+"""
+# Exogenous processes
+ss = Dict{Symbol,Float64}()
+ss[:A] = par.Abar
+ss[:ν] = par.νbar
+ss[:ξ] = par.ξbar
+# upper steady state
+sstates = nlsolve(steady_states, [1.0, 1.0])
+upper = deepcopy(ss);
+upper[:π] = sstates.zero[1];
+upper[:y] = sstates.zero[2];
+upper[:g] = par.gbar/(1 + exp(par.k*(upper[:π] - par.πstar)))
+upper[:R] = max(1, par.Rstar*(upper[:π]/par.πstar)^par.ϕ_π * (upper[:y]/par.ystar)^par.ϕ_y)
+upper[:Φ] = Linex_cost(upper[:π])
+upper[:mu] = (1/upper[:π])*(1/((1 - par.λ)*(upper[:y] + (upper[:ξ]+par.λ-1)*upper[:g])))
+upper[:EΦ_lead] = upper[:Φ]
+upper[:Emu_lead] = upper[:mu]
+upper[:Eπ] = upper[:π]
+upper[:Ey] = upper[:y]
+# central steady state
+sstates = nlsolve(steady_states, [par.β, 0.5])
+central = deepcopy(ss);
+central[:π] = sstates.zero[1];
+central[:y] = sstates.zero[2];
+central[:g] = par.gbar/(1 + exp(par.k*(central[:π] - par.πstar)))
+central[:R] = max(1, par.Rstar*(central[:π]/par.πstar)^par.ϕ_π * (central[:y]/par.ystar)^par.ϕ_y)
+central[:Φ] = Linex_cost(central[:π])
+central[:mu] = (1/central[:π])*(1/((1 - par.λ)*(central[:y] + (central[:ξ]+par.λ-1)*central[:g])))
+central[:EΦ_lead] = central[:Φ]
+central[:Emu_lead] = central[:mu]
+central[:Eπ] = central[:π]
+central[:Ey] = central[:y]
+# lower steady state
+sstates = nlsolve(steady_states, [0.93, par.gbar/2+0.01])
+lower = deepcopy(ss);
+lower[:π] = sstates.zero[1];
+lower[:y] = sstates.zero[2];
+lower[:g] = par.gbar/(1 + exp(par.k*(lower[:π] - par.πstar)))
+lower[:R] = max(1, par.Rstar*(lower[:π]/par.πstar)^par.ϕ_π * (lower[:y]/par.ystar)^par.ϕ_y)
+lower[:Φ] = Linex_cost(lower[:π])
+lower[:mu] = (1/lower[:π])*(1/((1 - par.λ)*(lower[:y] + (upper[:ξ] - 1)*lower[:g])))
+lower[:EΦ_lead] = lower[:Φ]
+lower[:Emu_lead] = lower[:mu]
+lower[:Eπ] = lower[:π]
+lower[:Ey] = lower[:y]
+
 
 pyplot()
-infl_points = 0.7:0.01:1.4;
-y_points = 0.2:0.01:1.1;
+infl_points = (lower[:π]-0.05):0.002:(upper[:π]+0.1);
+y_points = (lower[:y]-0.1):0.01:(upper[:y]+0.2);
 function plot_ss(infl_points, y_points)
 	# Set up plot
 	ss_plot = plot(xlabel = L"y_{t-1}", xlims = (minimum(y_points),maximum(y_points)),
@@ -146,7 +218,14 @@ function plot_ss(infl_points, y_points)
 	# Plot IS condition
 	plot!(IS_condition.(infl_points),infl_points, label = "IS Curve", color = :green)
 	# Fill in ZLB area
-    plot!(ZLB_binds.(infl_points), infl_points,
+    min_zlby = minimum(ZLB_binds.(infl_points))
+    zlby_pts = ZLB_binds.(infl_points)
+    zlbinf_pts = infl_points
+    if min_zlby > minimum(y_points)
+        zlby_pts = vcat(ZLB_binds.(infl_points), minimum(y_points))
+        zlbinf_pts = vcat(infl_points, maximum(infl_points))
+    end
+    plot!(zlby_pts, zlbinf_pts,
 		fillrange=[minimum(infl_points)*ones(len(infl_points))], fillalpha = 0.5,
 		 color = :paleturquoise1, label = "ZLB binds")
 	return ss_plot
@@ -196,17 +275,15 @@ State the equilibrium conditions of the model as a function which returns
     F[3] = Φ_t - Linex_cost(π_t) ::Float64
 
     # μ_t marginal cost (sort of)
-    F[4] = mu_t - (1/π_t)*(1/(y_t + (ξ_t - 1)*g_t - par.λ*(y_lag + (ξ_lag - 1)*g_lag))) ::Float64
+    F[4] = mu_t - (1/π_t)*(1/(y_t + (ξ_t - 1)*g_t - par.λ*(y_lag - g_lag))) ::Float64
 
 	# NKPC condition
-    F[5] =  Φ_t - (ν_t/par.α)*(y_t/A_t)^((par.ϵ + 1)/par.α) - (1 - ν_t)*y_t*π_t*mu_t - par.β*EΦ_lead ::Float64
+    F[5] =  Φ_t - (ν_t/par.α)*(y_t/A_t)^((par.ϵ + 1)/par.α) - 
+        (1 - ν_t)*y_t*π_t*mu_t - par.β*EΦ_lead ::Float64
 
     # EE condition (only binds when c > 0 !!)
-    if y_t > g_t
-        F[6] = π_t*mu_t - par.β*R_t*Emu_lead ::Float64
-    else
-        F[6] = y_t - g_t ::Float64
-    end
+    F[6] = y_t - max( g_t, (1/(par.β*R_t*Emu_lead)) -  
+        (ξ_t - 1)*g_t + par.λ*(y_lag - *g_lag))::Float64
     
     return F
 end
@@ -226,70 +303,11 @@ s = DataFrame(ones(options.N, length(variables)), variables);
 
 
 """
-Find the steady states numerically
-"""
-# Define a steady state function to numerically solve
-"""
-Function that gives zero when x (inflation, output) is at a deterministic steady state
-"""
-function steady_states(F::Array{Float64,1},x::Array{Float64,1})
-    π_t::Float64 = x[1]
-    y_t::Float64 = x[2]
-
-    F[1]::Float64 = y_t - PC_condition(π_t)
-    if π_t == par.β
-        F[2] = y_t - PC_condition(π_t)
-    else
-        F[2] = y_t - IS_condition(π_t)
-    end
-    
-    return F
-end
-# Exogenous processes
-ss = Dict{Symbol,Float64}()
-ss[:A] = par.Abar
-ss[:ν] = par.νbar
-ss[:ξ] = par.ξbar
-# upper steady state
-sstates = nlsolve(steady_states, [1.0, 1.0])
-upper = deepcopy(ss);
-upper[:π] = sstates.zero[1];
-upper[:y] = sstates.zero[2];
-upper[:g] = par.gbar/(1 + exp(par.k*(upper[:π] - par.πstar)))
-upper[:R] = max(1, par.Rstar*(upper[:π]/par.πstar)^par.ϕ_π * (upper[:y]/par.ystar)^par.ϕ_y)
-upper[:Φ] = Linex_cost(upper[:π])
-upper[:mu] = (1/upper[:π])*(1/((1 - par.λ)*(upper[:y] + (upper[:ξ] - 1)*upper[:g])))
-upper[:EΦ_lead] = upper[:Φ]
-upper[:Emu_lead] = upper[:mu]
-# central steady state
-sstates = nlsolve(steady_states, [par.β, 0.5])
-central = deepcopy(ss);
-central[:π] = sstates.zero[1];
-central[:y] = sstates.zero[2];
-central[:g] = par.gbar/(1 + exp(par.k*(central[:π] - par.πstar)))
-central[:R] = max(1, par.Rstar*(central[:π]/par.πstar)^par.ϕ_π * (central[:y]/par.ystar)^par.ϕ_y)
-central[:Φ] = Linex_cost(central[:π])
-central[:mu] = (1/central[:π])*(1/((1 - par.λ)*(central[:y] + (upper[:ξ] - 1)*central[:g])))
-central[:EΦ_lead] = central[:Φ]
-central[:Emu_lead] = central[:mu]
-# lower steady state
-sstates = nlsolve(steady_states, [0.9, par.gbar/2])
-lower = deepcopy(ss);
-lower[:π] = sstates.zero[1];
-lower[:y] = sstates.zero[2];
-lower[:g] = par.gbar/(1 + exp(par.k*(lower[:π] - par.πstar)))
-lower[:R] = max(1, par.Rstar*(lower[:π]/par.πstar)^par.ϕ_π * (lower[:y]/par.ystar)^par.ϕ_y)
-lower[:Φ] = Linex_cost(lower[:π])
-lower[:mu] = (1/lower[:π])*(1/((1 - par.λ)*(lower[:y] + (upper[:ξ] - 1)*lower[:g])))
-lower[:EΦ_lead] = lower[:Φ]
-lower[:Emu_lead] = lower[:mu]
-
-"""
 Test the equilibrium conditions and step! function by confirming the steady states
 """
 # Steady state should give zeros from equilibrium_conditions_fast
-s = initialise_df(s, lower);
-t = 230003;
+s = initialise_df(s, upper);
+t=10759; options.burnin+1;
 if len(indices.outputindex_current)>0
 	predictions1 = cat(Array(s[t-1, indices.outputindex_current]), Array(s[t-1,indices.outputindex_lead]), dims = 1);
 else
@@ -298,50 +316,137 @@ end
 states1 = extract_states(s,t,indices);
 starting_values1 = Vector(s[t,indices.endogindex]);
 F1 = zeros(options.nconditions)
+# x = starting_values1; states_input = states1; predictions_input = predictions1; F = F1;
 display(step_fast!(cat(starting_values1, states1, predictions1, dims = 1),options))
 display(equilibrium_conditions_fast(F1,starting_values1, states1, predictions1))
 
+
 """
-Initialise beliefs by training on (some of the) steady state(s)
+Run a range of simulations at different starting points. 
 """
-# Initialise s
-s = initialise_df(s, lower, gap = 500, steadystate_alt = upper)
-s = initialise_df(s, upper)
-# Initialise and train beliefs
+# Initialise beliefs randomly
 @everywhere beliefs = initialise_beliefs(options)
-@time beliefs = learn!(beliefs, s, options.N, options, indices, loss)
+
+# Change error properties
+par = @set par.σ_A  = 0.02
+par = @set par.σ_ξ  = 0.06
+par = @set par.ρ_ξ  = 0.5
+
+# Initialise the df
+s = DataFrame(ones(options.N, length(variables)), variables);
+s = initialise_df(s, central)
+s = initialise_df(s, lower, gap = 100, steadystate_alt = upper)
+# With some shocks 
+noise_A = par.σ_A*randn(nrow(s_temp))
+noise_ν = par.σ_ν*randn(nrow(s_temp))
+noise_ξ = par.σ_ξ*randn(nrow(s_temp))
+s.A = par.Abar .+ simulate_ar(par.ρ_A, 1.0, nrow(s), noise_A)
+s.ν = par.νbar .+ simulate_ar(par.ρ_ν, 1.0, nrow(s), noise_ν)
+s.ξ = par.ξbar .+ simulate_ar(par.ρ_ξ, 1.0, nrow(s), noise_ξ)
+# Some extra variables
+s[:,:version] .= 0
+s[:,:period] .= 0
+s[:,:y_lag] .= 0.0
+s.y_lag[2:options.N] = s.y[1:(options.N-1)]
+options.window = 1000
+# Define range of state variable
+s_all = DataFrame(s[1:(options.window+5),:])
+
+# Train beliefs
+options.window = nrow(s_all)-1
+@time beliefs = learn!(beliefs, s_all, nrow(s_all), options, indices, loss)
+# Run the sim
+s_all = DataFrame(s[1:(options.window+5),:])
+s_all.version .= 0
+y_range = (lower[:y]-0.05):0.01:round(upper[:y]+0.2, digits = 2)
+sim_length = 20
+for y_start in y_range
+    # Initialise this simulation
+    s_temp = s[1:(sim_length+1),:]
+    s_temp = initialise_df(s_temp, central)
+    s_temp.y[1] = y_start
+    s_temp.Ey[1] = y_start
+    s_temp.version .= findall(x -> x == y_start, y_range)[1]
+    # Draw shocks
+    noise_A = par.σ_A*randn(nrow(s_temp))
+    noise_ν = par.σ_ν*randn(nrow(s_temp))
+    noise_ξ = par.σ_ξ*randn(nrow(s_temp))
+    s_temp.A = par.Abar .+ simulate_ar(par.ρ_A, par.σ_A, nrow(s_temp), noise_A)
+    s_temp.ν = par.νbar .+ simulate_ar(par.ρ_ν, par.σ_ν, nrow(s_temp), noise_ν)
+    s_temp.ξ = par.ξbar .+ simulate_ar(par.ρ_ξ, par.σ_ξ, nrow(s_temp), noise_ξ)
+    # Simulate the model
+    s_temp = simulate_model(2:(sim_length+1), s_temp, beliefs, indices, options)
+    s_temp.y_lag[2:(sim_length+1)] = s_temp.y[1:(sim_length)]
+    s_temp[1,indices.outputnames_lead] .= NaN
+    s_temp.period = 0:sim_length
+    # Learn just on these observations
+    options.window = sim_length
+    #beliefs = learn!(beliefs, s_temp, nrow(s_temp), options, indices, loss)
+    # Append this simulation
+    s_all = vcat(s_all, s_temp)
+    s_all = s_all[s_all.version .> 0, :]
+end
+
+pyplot()
+plot_df = s_all[(s_all.period .<= 20).*(s_all.period .> 0) , :]
+plot(layout=(1,3), link = :x, legend = false)
+plot!(plot_df.period, plot_df.π, subplot = 1, group = plot_df.version, ylabel = L"\pi_t",)
+plot!(plot_df.period, plot_df.y_lag, subplot = 2, group = plot_df.version, ylabel = L"y_{t-1}")
+plot!(plot_df.period, plot_df.R, subplot = 3, group = plot_df.version, ylabel = L"R_{t}")
+display(plot!())
+
+sleep(0.5)
+
+pyplot()
+plot_df = s_all[(s_all.period .<= 20).*(s_all.period .> 0) , :]
+#plot_df = plot_df[vcat(1:20, 1101:1120, 501:20),:]
+plot(layout=(2,1), link = :x)
+plot!(plot_df.π, subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90, label = "True")
+plot!(plot_df.Eπ, subplot = 1, yguidefontrotation=-90, label = "Pred", linestyle = :dot)
+plot!(lower[:π]*ones(nrow(plot_df)), subplot = 1, label = false, color = :black, linestyle = :dot)
+plot!(upper[:π]*ones(nrow(plot_df)), subplot = 1, label = false, color = :black, linestyle = :dot)
+plot!(plot_df.y, subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, label = "True")
+plot!(plot_df.Ey, subplot = 2, yguidefontrotation=-90, label = "Pred", linestyle = :dot, xlabel = "Periods")
+plot!(lower[:y]*ones(nrow(plot_df)), subplot = 2, label = false, color = :black, linestyle = :dot)
+plot!(upper[:y]*ones(nrow(plot_df)), subplot = 2, label = false, color = :black, linestyle = :dot)
+
+
 
 
 """
-Run learning simulation
+Plot phase diagram
 """
-# Change the error variances
-par = @set par.σ_A  = 0.05
-par = @set par.σ_ν  = 0.05
-par = @set par.σ_ξ  = 0.2
 
-# Training options
-options.burnin_use_net = true;
-options.burnin = 10000 #100000;
-options.learning_gap = 5000 #100000;
-options.plotting_gap = 25000 #100000;
-options.window = 4999 #49999;
-options.plot_vars = [:π, :y, :Eπ, :Ey]
+pyplot()
+plot_ss(infl_points, y_points)
+y_interval = (maximum(y_points) - minimum(y_points))/5
+plot!(size = (600, 400), xguidefontsize = 20, yguidefontsize = 18)
+initial_ss = deepcopy(central)
+starts = [(π=1.0,y=maximum(y_points),periods=100,arrows=[6, 20]),
+	(π=1.0,y=maximum(y_points)-y_interval,periods=100,arrows=[6, 20]),
+	(π=1.0,y=maximum(y_points)-2*y_interval,periods=100,arrows=[6, 20]),
+	(π=1.0,y=maximum(y_points)-3*y_interval,periods=100,arrows=[20, 40]),
+	(π=1.0,y=maximum(y_points)-4*y_interval,periods=100,arrows=[6, 20]),
+	(π=1.0,y=minimum(y_points),periods=100,arrows=[6, 20])
+	]
+for start in starts
+	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
+	paths = irf(:ϵ_A, initial_ss, beliefs, shock_period = 2, periods = start[:periods],
+		magnitude = 0.0, persistence = par.ρ_A, show_plot = false)
+	paths.y_lag = cat(start[:y],paths.y[1:(start.periods -1 )],dims=1)
+	if start == starts[1]
+		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 2:(start[:periods]), label = "Equilibrium paths", arrow_size = .5,
+			final_arrow = true)
+	else
+		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows].-5, h_points = 2:(start[:periods]),
+			v_points = 2:start[:periods], arrow_size = .5, final_arrow = true)
+		end
+end
+plot!(size = (600,400))
+#savefig("figures/pw_linear/phase_nnet_pistar"*rep_pnt(par.π_star)*
+#	"_alpha"*rep_pnt(par.α)*".pdf")
 
-# Simulate the learning for a set number of periods
-noise_A = par.σ_A*randn((options.N - options.burnin))
-noise_ν = par.σ_ν*randn((options.N - options.burnin))
-noise_ξ = par.σ_ξ*randn((options.N - options.burnin))
-gr() # Set GR backend for plots as it's the fastest
-s[1:options.burnin,:] = s[(options.N-options.burnin+1):options.N,:];
-s.A[(options.burnin+1):options.N] = par.Abar .+ simulate_ar(par.ρ_A, par.σ_A, options.N - options.burnin, noise_A)
-s.ν[(options.burnin+1):options.N] = par.νbar .+ simulate_ar(par.ρ_ν, par.σ_ν, options.N - options.burnin, noise_ν)
-s.ξ[(options.burnin+1):options.N] = par.ξbar .+ simulate_ar(par.ρ_ξ, par.σ_ξ, options.N - options.burnin, noise_ξ)
-s.A = max.(s.A, [0.5])
-s.ν = max.(s.ν, [0.5])
-s.ξ = max.(s.ξ, [0.5])
-s.ξ = min.(s.ξ, [1.5])
-@time beliefs,s = simulate_learning(options.burnin:options.N, s, beliefs, indices, options)
 
 
 """
@@ -363,48 +468,25 @@ upper_stoch[:Emu_lead] = paths.Emu_lead[1000]
 
 # Lower steady state
 lower_stoch = deepcopy(lower)
-paths = irf(:ϵ_y, lower_stoch, beliefs, shock_period = 5, periods = 1000,
-	magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
+paths = irf(:ν, lower_stoch, beliefs, shock_period = 5, periods = 1000,
+	magnitude = 0.0, persistence = par.ρ_ν, show_plot = false)
 lower_stoch[:π] = paths.π[1000];
-lower_stoch[:Eπ_lead] = paths.Eπ_lead[1000];
 lower_stoch[:y] = paths.y[1000]
-
+lower_stoch[:g] = paths.g[1000]
+lower_stoch[:R] = paths.R[1000]
+lower_stoch[:Φ] = paths.Φ[1000]
+lower_stoch[:mu] = paths.mu[1000]
+lower_stoch[:EΦ_lead] = paths.EΦ_lead[1000]
+lower_stoch[:Emu_lead] = paths.Emu_lead[1000]
 pyplot()
 plot()
-paths1 = irf(:ν, upper_stoch, beliefs, shock_period = 5, periods = 100, shock_mean = par.νbar,
-	magnitude = 0.5, persistence = par.ρ_ν, show_plot = true,plot_vars=[:y,:π])
-paths2 = irf(:A, upper_stoch, beliefs, shock_period = 5, periods = 100, shock_mean = par.Abar,
+paths1 = irf(:A, upper_stoch, beliefs, shock_period = 5, periods = 100, shock_mean = par.Abar,
 	magnitude = 0.5, persistence = par.ρ_A, show_plot = true,plot_vars=[:y,:π])
-paths4 = irf(:ξ, upper_stoch, beliefs, shock_period = 5, periods = 100, shock_mean = par.Abar,
-	magnitude = 0.5, persistence = par.ρ_ξ, show_plot = true,plot_vars=[:y,:π])
+paths2 = irf(:ξ, upper_stoch, beliefs, shock_period = 2, periods = 100, shock_mean = par.ξbar,
+	magnitude = 0.1, persistence = par.ρ_ξ, show_plot = true,plot_vars=[:y,:π])
 
+ 
 
-    paths2 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
-	magnitude = -0.03, persistence = par.ρ_y, show_plot = true,
-	plot_vars=[:y,:π,:Ey, :Eπ])
-
-
-# Plot simulated time series
-pyplot()
-plot_range = (500000-5999):(500000-4999)
-plot(layout=(2,1),legend = false,  link = :x)
-plot!(s.π[plot_range], subplot = 1, ylabel = L"\pi_t", yguidefontrotation=-90)
-plot!(s.y[plot_range], subplot = 2, ylabel = L"y_t", yguidefontrotation=-90, xlabel = "Periods")
-plot!(size = (600,300))
-#savefig("figures/pw_linear/sim_series_pistar"*rep_pnt(par.π_star)*
-#	"_alpha"*rep_pnt(par.α)*".pdf")
-
-export_df = deepcopy(s)
-#export_df = export_df[options.N-99999:options.N,:]
-rename!(export_df, replace.(names(export_df), "π" => "pi"))
-rename!(export_df, replace.(names(export_df), "ϵ" => "epsilon"))
-export_df.r = Taylor_condition.(export_df.pi)
-#export_df = export_df[:,[:epsilon_pi, :epsilon_y, :pi, :y, :r, :y_lag, :Epi_lead]]
-
-CSV.write("figures/pw_linear/sim_data/export_data_zlb.csv", export_df)
-
-#save("networks/pwlin_eta"*rep_pnt(par.η)*".jld2", "beliefs", beliefs)
-#beliefs = load("networks/pwlin_eta"*rep_pnt(par.η)*".jld2", "beliefs", "beliefs");
 
 """
 Run a whole bunch of simulations
@@ -459,6 +541,7 @@ end
 		
 groups = string.(plm_df.version).*"-".*string.(plm_df.progress)
 plot(plm_df.y_lag, plm_df.Epi_lead, group = groups)
+
 
 
 
@@ -583,40 +666,6 @@ paths2 = irf(:ϵ_y, upper_stoch, beliefs, shock_period = 5, periods = 100,
 
 
 
-
-"""
-Plot phase diagram
-"""
-
-pyplot()
-plot_ss(plot_points)
-initial_ss = deepcopy(central)
-starts = [(π=3.0,y=3.0,periods=100,arrows=[10]),
-	(π=-3.,y=-3.,periods=100,arrows=[10]),
-	(π=0.5,y=0.5,periods=100,arrows=[22, 65]),
-	(π=-0.5,y=-0.5,periods=100,arrows=[22, 65]),
-	(π=-.2,y=-0.2,periods=100,arrows=[19]),
-	(π=0.3,y=0.2,periods=100,arrows=[19]),
-	(π=1.0,y=-1.0,periods=100,arrows=[9]),
-	(π=-1.0,y=-1.0,periods=100,arrows=[9])
-	]
-for start in starts
-	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
-	paths = irf(:ϵ_y, initial_ss, beliefs, shock_period = 2, periods = start[:periods],
-		magnitude = 0.0, persistence = par.ρ_y, show_plot = false)
-	paths.y_lag = cat(start[:y],paths.y[1:(start.periods -1 )],dims=1)
-	if start == starts[1]
-		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
-			v_points = 2:(start[:periods]), label = "Equilibrium paths", arrow_size = .5,
-			final_arrow = true)
-	else
-		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows].-5, h_points = 2:(start[:periods]),
-			v_points = 2:start[:periods], arrow_size = .5, final_arrow = true)
-		end
-end
-plot!(size = (600,400))
-#savefig("figures/pw_linear/phase_nnet_pistar"*rep_pnt(par.π_star)*
-#	"_alpha"*rep_pnt(par.α)*".pdf")
 
 
 for yy in -3.5:0.5:3.5

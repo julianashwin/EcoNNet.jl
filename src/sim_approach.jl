@@ -3,6 +3,34 @@ Functions that run the simulation approach for neural network learning
 """
 
 
+"""
+Function  that just simulates, without learning
+"""
+function simulate_model(sim_range::UnitRange{Int64}, s_temp::DataFrame, beliefs::Chain, indices::EcoNNetIndices, options::EcoNNetOptions;
+    pred_range::Array{Float64} = [-1000., 10000])
+
+    # Loop over the time periods specified in sim_range
+    for tt in sim_range
+        # Form expectations
+        predictions = zeros(len(indices.expectnames_all))::Array{Float64,1}
+        inputs = extract_inputs(s_temp,tt,indices,options)::Array{Float64,1}
+        predictions = predict!(inputs, beliefs);
+        # For numerical stability at beginning of simulation, bound the expectations
+        predictions =  min.(max.(predictions, minimum(pred_range)), maximum(pred_range))
+        s_temp[tt,:] = populate(s_temp[tt,:], indices.expectindex_all, predictions)::DataFrameRow
+        
+        # Extract states to feed into step!
+        states = extract_states(s_temp,tt,indices)::Array{Float64,1}
+
+        # Solve for the new values of the endogneous variables
+        starting_values = Vector(s_temp[tt-1,indices.endogindex])::Array{Float64,1}
+        new_values = step_fast!(cat(starting_values, states, predictions, dims = 1), options)::Array{Float64,1}
+
+        # Populate the s dataframe with the new values
+        s_temp[tt,:] = populate(s_temp[tt,:], indices.endogindex, new_values)::DataFrameRow
+    end
+    return s_temp
+end
 
 """
 Function that simulates neural network learning and returns simulated data and updated beliefs

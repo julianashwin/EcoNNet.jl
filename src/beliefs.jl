@@ -105,8 +105,11 @@ function learn!(beliefs::Chain, s::DataFrame, tt::Int64, options::EcoNNetOptions
 	end
 
 	outputs = Matrix(transpose(outputs))
-
-    @assert size(inputs)[2] == size(outputs)[2] "Different number of obs in inputs and outputs"
+	@assert size(inputs)[2] == size(outputs)[2] "Different number of obs in inputs and outputs"
+	# Remove observations with NaNs
+	keep_cols = vec(sum(isnan.(outputs), dims = 1) .== 0 )
+	outputs = outputs[:,keep_cols]
+	inputs = inputs[:, keep_cols]
 
     # Split the data into training, test and validation sets
 	df::NCycle = ncycle([(inputs, outputs)], n_cycles)
