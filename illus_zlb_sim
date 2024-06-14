@@ -4,7 +4,7 @@ cd("/Users/julianashwin/Documents/GitHub/EcoNNet.jl")
 Add extra cores if you want to parallelise later
 """
 
-using LaTeXStrings, TableView, CSV
+using LaTeXStrings, TableView, CSV, JLD
 using Distributed
 using Setfield
 #addprocs(2)
@@ -38,10 +38,10 @@ leads and lags are specified as a `_lead` or `_lag` suffix
 Define the parameters as a Named Tuple.
 """
 
-@everywhere par = (β = 0.95, πstar = 1.02, α = 0.35, ξbar = 1.0,
+@everywhere par = (β = 0.96, πstar = 1.02, α = 0.35, ξbar = 1.0,
     Abar = 1., νbar = 2.0, gbar = 0.8, ηbar = 1.0,
     ϕ = 75., ψ = 5., ϵ = 0., 
-    ϕ_π = 2.0, ϕ_y = 1.0, λ = 0.8, k = 2.0,
+    ϕ_π = 2.0, ϕ_y = 1.0, λ = 0.95, k = 2.0,
     ρ_A = 0.5, ρ_ν = 0.5, ρ_ξ = 0.5, σ_A = 0.01, σ_ν = 0.0, σ_ξ = 0.1,
     Rstar = 1.02/0.95, ystar = 1.0,);
 par = @set par.Rstar = par.πstar/par.β
@@ -173,7 +173,7 @@ upper[:y] = sstates.zero[2];
 upper[:g] = par.gbar/(1 + exp(par.k*(upper[:π] - par.πstar)))
 upper[:R] = max(1, par.Rstar*(upper[:π]/par.πstar)^par.ϕ_π * (upper[:y]/par.ystar)^par.ϕ_y)
 upper[:Φ] = Linex_cost(upper[:π])
-upper[:mu] = (1/upper[:π])*(1/((1 - par.λ)*(upper[:y] + (upper[:ξ]+par.λ-1)*upper[:g])))
+upper[:mu] = (1/upper[:π])*(1/((1 - par.λ)*upper[:y] + (upper[:ξ]+par.λ-1)*upper[:g]))
 upper[:EΦ_lead] = upper[:Φ]
 upper[:Emu_lead] = upper[:mu]
 upper[:Eπ] = upper[:π]
@@ -186,7 +186,7 @@ central[:y] = sstates.zero[2];
 central[:g] = par.gbar/(1 + exp(par.k*(central[:π] - par.πstar)))
 central[:R] = max(1, par.Rstar*(central[:π]/par.πstar)^par.ϕ_π * (central[:y]/par.ystar)^par.ϕ_y)
 central[:Φ] = Linex_cost(central[:π])
-central[:mu] = (1/central[:π])*(1/((1 - par.λ)*(central[:y] + (central[:ξ]+par.λ-1)*central[:g])))
+central[:mu] = (1/central[:π])*(1/((1 - par.λ)*central[:y] + (central[:ξ]+par.λ-1)*central[:g]))
 central[:EΦ_lead] = central[:Φ]
 central[:Emu_lead] = central[:mu]
 central[:Eπ] = central[:π]
@@ -199,7 +199,7 @@ lower[:y] = sstates.zero[2];
 lower[:g] = par.gbar/(1 + exp(par.k*(lower[:π] - par.πstar)))
 lower[:R] = max(1, par.Rstar*(lower[:π]/par.πstar)^par.ϕ_π * (lower[:y]/par.ystar)^par.ϕ_y)
 lower[:Φ] = Linex_cost(lower[:π])
-lower[:mu] = (1/lower[:π])*(1/((1 - par.λ)*(lower[:y] + (upper[:ξ] - 1)*lower[:g])))
+lower[:mu] = (1/lower[:π])*(1/((1 - par.λ)*lower[:y] + (lower[:ξ]+par.λ - 1)*lower[:g]))
 lower[:EΦ_lead] = lower[:Φ]
 lower[:Emu_lead] = lower[:mu]
 lower[:Eπ] = lower[:π]
@@ -283,7 +283,7 @@ State the equilibrium conditions of the model as a function which returns
 
     # EE condition (only binds when c > 0 !!)
     F[6] = y_t - max( g_t, (1/(par.β*R_t*Emu_lead)) -  
-        (ξ_t - 1)*g_t + par.λ*(y_lag - *g_lag))::Float64
+        (ξ_t - 1)*g_t + par.λ*(y_lag - g_lag))::Float64
     
     return F
 end
@@ -328,9 +328,9 @@ Run a range of simulations at different starting points.
 @everywhere beliefs = initialise_beliefs(options)
 
 # Change error properties
-par = @set par.σ_A  = 0.02
-par = @set par.σ_ξ  = 0.06
-par = @set par.ρ_ξ  = 0.5
+par = @set par.σ_A  = 0.01
+par = @set par.σ_ξ  = 0.01
+par = @set par.ρ_ξ  = 0.9
 
 # Initialise the df
 s = DataFrame(ones(options.N, length(variables)), variables);
@@ -422,7 +422,8 @@ plot_ss(infl_points, y_points)
 y_interval = (maximum(y_points) - minimum(y_points))/5
 plot!(size = (600, 400), xguidefontsize = 20, yguidefontsize = 18)
 initial_ss = deepcopy(central)
-starts = [(π=1.0,y=maximum(y_points),periods=100,arrows=[6, 20]),
+starts = [(π=1.0,y=0.57,periods=100,arrows=[20, 40]),
+    (π=1.0,y=maximum(y_points),periods=100,arrows=[6, 20]),
 	(π=1.0,y=maximum(y_points)-y_interval,periods=100,arrows=[6, 20]),
 	(π=1.0,y=maximum(y_points)-2*y_interval,periods=100,arrows=[6, 20]),
 	(π=1.0,y=maximum(y_points)-3*y_interval,periods=100,arrows=[20, 40]),
@@ -448,6 +449,32 @@ plot!(size = (600,400))
 #	"_alpha"*rep_pnt(par.α)*".pdf")
 
 
+# Clean version
+pyplot()
+plot_ss(infl_points, y_points)
+y_interval = (maximum(y_points) - minimum(y_points))/5
+plot!(size = (600, 400), xguidefontsize = 20, yguidefontsize = 18)
+initial_ss = deepcopy(central)
+starts = [(π=1.0,y=0.4,periods=100,arrows=[1]),
+    (π=1.0,y=0.56,periods=100,arrows=[50, 68, 75]),
+	(π=1.0,y=0.57,periods=100,arrows=[25, 60]),
+	(π=1.0,y=0.8,periods=100,arrows=[6, 20])
+	]
+for start in starts
+	initial_ss[:π] = start[:π]; initial_ss[:y] = start[:y];
+	paths = irf(:ϵ_A, initial_ss, beliefs, shock_period = 2, periods = start[:periods],
+		magnitude = 0.0, persistence = par.ρ_A, show_plot = false)
+	paths.y_lag = cat(start[:y],paths.y[1:(start.periods -1 )],dims=1)
+	if start == starts[1]
+		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows], h_points = 2:start[:periods],
+			v_points = 2:(start[:periods]), label = "Equilibrium paths", arrow_size = .5,
+			final_arrow = true)
+	else
+		phase_arrow_plot(paths, [:y_lag,:π], arrow_points=start[:arrows].-5, h_points = 2:(start[:periods]),
+			v_points = 2:start[:periods], arrow_size = .5, final_arrow = true)
+		end
+end
+plot!(size = (600,400))
 
 """
 Identify stochastic steady states
